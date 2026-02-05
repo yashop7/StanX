@@ -12,3 +12,4 @@ npx -y create-solana-dapp@latest -t solana-foundation/templates/kit/prediction-m
 npm install
 npm run dev
 ```
+# Prediction-Market
