@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 import { TrendingUp, Users, Clock, ArrowUpRight } from 'lucide-react';
 import { Market } from '@/lib/store';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 interface MarketCardProps {
   market: Market;
@@ -24,22 +26,24 @@ export const MarketCard = ({ market, featured = false, compact = false }: Market
   // Compact variant for horizontal lists
   if (compact) {
     return (
-      <Link to={`/market/${market.id}`} className="block group">
-        <div className="flex items-center gap-4 p-4 rounded-xl bg-card border border-border/50 hover:border-border hover:shadow-sm transition-all duration-200">
+      <Link href={`/market/${market.id}`} className="block group">
+        <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-card border border-border/40 hover:border-border hover:bg-muted/30 transition-all duration-200">
           <div className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-muted">
-            <img src={market.image} alt="" className="w-full h-full object-cover opacity-80" />
+            <img src={market.image} alt="" className="w-full h-full object-cover opacity-90" />
           </div>
-          <div className="flex-1 min-w-0">
+          
+          <div className="flex-1 min-w-0 pr-4">
             <h3 className="font-medium text-sm leading-snug line-clamp-1 text-foreground group-hover:text-foreground/80 transition-colors">
               {market.question}
             </h3>
-            <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
               <span>{formatVolume(market.volume)} vol</span>
-              <span className="text-border">·</span>
+              <span className="text-border/60">·</span>
               <span>{formatDistanceToNow(market.endDate, { addSuffix: false })}</span>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
             <span className="text-sm font-semibold text-success tabular-nums">
               {yesPercent}¢
             </span>
@@ -54,16 +58,14 @@ export const MarketCard = ({ market, featured = false, compact = false }: Market
   }
 
   return (
-    <Link to={`/market/${market.id}`} className="block group h-full">
-      <div className={cn(
-        "relative h-full rounded-xl overflow-hidden",
-        "bg-card border border-border/50",
-        "transition-all duration-300 ease-out",
-        "hover:border-border hover:shadow-md hover:shadow-black/5",
-        "dark:hover:shadow-black/20",
-        featured && "lg:flex lg:flex-row"
-      )}>
-        {/* Image Section with Subtle Overlay */}
+    <Link href={`/market/${market.id}`} className="block group h-full">
+      <Card 
+        variant={featured ? "featured" : "interactive"}
+        className={cn(
+          "relative h-full rounded-xl overflow-hidden",
+          featured && "lg:flex lg:flex-row"
+        )}
+      >
         <div className={cn(
           "relative overflow-hidden bg-muted",
           featured ? "lg:w-[40%] h-44 lg:h-auto" : "h-36"
@@ -71,23 +73,23 @@ export const MarketCard = ({ market, featured = false, compact = false }: Market
           <img
             src={market.image}
             alt={market.question}
-            className="w-full h-full object-cover opacity-40 dark:opacity-30 transition-opacity duration-500 group-hover:opacity-50"
+            className="w-full h-full object-cover"
           />
           
           {/* Gradient overlay for better text readability */}
-          <div className="absolute inset-0 bg-gradient-to-b from-card/40 via-transparent to-card/60" />
+          {/* <div className="absolute inset-0 bg-gradient-to-b from-card/40 via-transparent to-card/60" /> */}
           
-          {/* Category Badge - Pill Style */}
+          
           <div className="absolute top-3 left-3">
-            <div className="px-2.5 py-1 rounded-full bg-secondary/90 dark:bg-secondary/80 backdrop-blur-sm text-[11px] font-medium text-secondary-foreground">
+            <Badge variant="outline" className="bg-card/90 backdrop-blur-sm border-border/50">
               {market.category}
-            </div>
+            </Badge>
           </div>
 
           {/* Hover Arrow */}
-          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">
+          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transform translate-x-2 group-hover:translate-x-0 transition-all duration-500">
             <div className="w-7 h-7 rounded-full bg-card/90 backdrop-blur-sm flex items-center justify-center border border-border/50">
-              <ArrowUpRight className="h-3.5 w-3.5 text-foreground" />
+              <ArrowUpRight className="h-4 w-4 text-foreground" />
             </div>
           </div>
         </div>
@@ -144,7 +146,7 @@ export const MarketCard = ({ market, featured = false, compact = false }: Market
             </div>
           </div>
         </div>
-      </div>
+      </Card>
     </Link>
   );
 };

@@ -97,9 +97,9 @@ export const OrderBook = ({ yesPrice, noPrice }: OrderBookProps) => {
   };
 
   return (
-    <div className="rounded-2xl border border-border/30 dark:border-border/20 bg-card dark:bg-gradient-to-b dark:from-[hsl(240,6%,8%)] dark:to-[hsl(240,6%,5%)] overflow-hidden">
+    <div className="panel-card overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-border/30 dark:border-border/15">
+      <div className="panel-header">
         <h3 className="text-sm font-semibold text-foreground">Order Book</h3>
       </div>
 

@@ -1,10 +1,11 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+'use client';
+
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ChevronRight } from 'lucide-react';
 import { useStore } from '@/lib/store';
-import { useNavigate } from 'react-router-dom';
+import { useRouter } from 'next/navigation';
 
 interface MarketSwitcherProps {
   currentMarketId: string;
@@ -12,7 +13,7 @@ interface MarketSwitcherProps {
 
 export const MarketSwitcher = ({ currentMarketId }: MarketSwitcherProps) => {
   const markets = useStore((state) => state.markets);
-  const navigate = useNavigate();
+  const router = useRouter();
 
   const formatVolume = (volume: number) => {
     if (volume >= 1000000) return `$${(volume / 1000000).toFixed(1)}M`;
@@ -25,18 +26,21 @@ export const MarketSwitcher = ({ currentMarketId }: MarketSwitcherProps) => {
     .slice(0, 6);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Quick Access</CardTitle>
-        <CardDescription>Switch between markets</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-2">
+    <div className="panel-card overflow-hidden">
+      {/* Header */}
+      <div className="panel-header">
+        <h3 className="text-lg font-semibold leading-none">Quick Access</h3>
+        <p className="text-sm text-muted-foreground mt-1.5">Switch between markets</p>
+      </div>
+
+      {/* Content */}
+      <div className="p-5 space-y-2">
         {quickAccessMarkets.map((market) => (
           <Button
             key={market.id}
             variant="ghost"
-            className="w-full justify-start h-auto p-3 text-left hover:bg-muted"
-            onClick={() => navigate(`/market/${market.id}`)}
+            className="w-full justify-start h-auto p-3 text-left hover:bg-muted/50 rounded-xl"
+            onClick={() => router.push(`/market/${market.id}`)}
           >
             <div className="flex-1 min-w-0 space-y-1">
               <div className="font-medium truncate text-sm leading-tight">
@@ -55,16 +59,16 @@ export const MarketSwitcher = ({ currentMarketId }: MarketSwitcherProps) => {
           </Button>
         ))}
 
-        <Separator className="my-4" />
+        <Separator className="my-4 bg-border/20 dark:bg-border/10" />
 
         <Button
           variant="outline"
           className="w-full"
-          onClick={() => navigate('/markets')}
+          onClick={() => router.push('/markets')}
         >
           View All Markets
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };

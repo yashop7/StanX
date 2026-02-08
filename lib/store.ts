@@ -3,7 +3,7 @@ import { create } from 'zustand';
 export interface Market {
   id: string;
   question: string;
-  category: 'Politics' | 'Sports' | 'Crypto' | 'Entertainment' | 'Science' | 'Technology';
+  category: 'YouTube' | 'Streaming' | 'Movies' | 'Music' | 'Gaming' | 'TV Shows';
   yesPrice: number;
   noPrice: number;
   volume: number;
@@ -15,6 +15,21 @@ export interface Market {
   priceHistory: { time: number; value: number }[];
   status: 'active' | 'resolved' | 'ending-soon';
   image: string;
+  sourceUrl?: string;
+  targetValue?: string;
+}
+
+export interface Order {
+  id: string;
+  marketId: string;
+  userId: string;
+  side: 'YES' | 'NO';
+  type: 'limit' | 'market';
+  price: number;  // 0-100 cents
+  size: number;   // number of shares
+  filled: number; // shares filled
+  status: 'open' | 'partial' | 'filled' | 'cancelled';
+  createdAt: Date;
 }
 
 export interface Position {
@@ -26,12 +41,40 @@ export interface Position {
   currentPrice: number;
 }
 
+export interface UserAccount {
+  id: string;
+  walletAddress: string;
+  freeBalance: number;   // Available to trade
+  lockedBalance: number; // In open orders
+  positions: Position[];
+}
+
+interface OrderBook {
+  bids: Order[];  // Buy orders (sorted high to low)
+  asks: Order[];  // Sell orders (sorted low to high)
+}
+
 interface StoreState {
   markets: Market[];
   positions: Position[];
   balance: number;
-  addPosition: (position: Position) => void;
+  lockedBalance: number;
+  orders: Order[];
+  orderBooks: Record<string, OrderBook>;
+  
+  // Market actions
   updateMarketPrice: (marketId: string, yesPrice: number) => void;
+  
+  // Order actions
+  placeOrder: (order: Omit<Order, 'id' | 'createdAt' | 'filled' | 'status'>) => Order;
+  cancelOrder: (orderId: string) => void;
+  
+  // Position actions
+  addPosition: (position: Position) => void;
+  
+  // Balance actions
+  deposit: (amount: number) => void;
+  withdraw: (amount: number) => boolean;
 }
 
 // Generate demo price history
@@ -41,10 +84,10 @@ const generatePriceHistory = (basePrice: number, points: number = 100) => {
   const now = Date.now();
   
   for (let i = points; i >= 0; i--) {
-    const change = (Math.random() - 0.5) * 0.05; // ±5% volatility
+    const change = (Math.random() - 0.5) * 0.05;
     price = Math.max(0.01, Math.min(0.99, price + change));
     history.push({
-      time: now - (i * 3600000), // 1 hour intervals
+      time: now - (i * 3600000),
       value: price
     });
   }
@@ -52,147 +95,231 @@ const generatePriceHistory = (basePrice: number, points: number = 100) => {
   return history;
 };
 
-// Demo markets data
+// Generate mock order book for a market
+const generateOrderBook = (yesPrice: number): OrderBook => {
+  const bids: Order[] = [];
+  const asks: Order[] = [];
+  const basePrice = Math.round(yesPrice * 100);
+  
+  // Generate 5 levels of bids (buy orders below current price)
+  for (let i = 1; i <= 5; i++) {
+    const price = Math.max(1, basePrice - i);
+    bids.push({
+      id: `bid-${i}`,
+      marketId: '1',
+      userId: 'maker-1',
+      side: 'YES',
+      type: 'limit',
+      price,
+      size: Math.floor(Math.random() * 500) + 100,
+      filled: 0,
+      status: 'open',
+      createdAt: new Date()
+    });
+  }
+  
+  // Generate 5 levels of asks (sell orders above current price)
+  for (let i = 1; i <= 5; i++) {
+    const price = Math.min(99, basePrice + i);
+    asks.push({
+      id: `ask-${i}`,
+      marketId: '1',
+      userId: 'maker-2',
+      side: 'YES',
+      type: 'limit',
+      price,
+      size: Math.floor(Math.random() * 500) + 100,
+      filled: 0,
+      status: 'open',
+      createdAt: new Date()
+    });
+  }
+  
+  return { bids, asks };
+};
+
+// Entertainment-focused demo markets
 const demoMarkets: Market[] = [
   {
     id: '1',
-    question: 'Will Bitcoin reach $100,000 by end of 2025?',
-    category: 'Crypto',
-    yesPrice: 0.62,
-    noPrice: 0.38,
-    volume: 1250000,
-    liquidity: 450000,
+    question: 'Will MrBeast hit 400M subscribers before 2026?',
+    category: 'YouTube',
+    yesPrice: 0.72,
+    noPrice: 0.28,
+    volume: 2850000,
+    liquidity: 780000,
     endDate: new Date('2025-12-31'),
-    participants: 2847,
+    participants: 8432,
     status: 'active',
-    description: 'Market resolves YES if Bitcoin (BTC) trades at or above $100,000 on any major exchange before December 31, 2025, 11:59 PM UTC.',
-    resolutionCriteria: 'Will use CoinGecko and Coinbase as primary sources. Must reach $100,000 on at least one major exchange.',
-    priceHistory: generatePriceHistory(0.62),
-    image: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=800&h=600&fit=crop'
+    description: 'Market resolves YES if MrBeast\'s main YouTube channel reaches 400 million subscribers before January 1, 2026.',
+    resolutionCriteria: 'Based on official YouTube subscriber count displayed on MrBeast\'s main channel.',
+    priceHistory: generatePriceHistory(0.72),
+    image: 'https://images.unsplash.com/photo-1611162616305-c69b3fa7fbe0?w=800&h=600&fit=crop',
+    sourceUrl: 'https://youtube.com/@MrBeast',
+    targetValue: '400000000'
   },
   {
     id: '2',
-    question: 'Will Democrats win the 2024 Presidential Election?',
-    category: 'Politics',
-    yesPrice: 0.48,
-    noPrice: 0.52,
-    volume: 3400000,
-    liquidity: 890000,
-    endDate: new Date('2024-11-05'),
-    participants: 12453,
+    question: 'Will Squid Game Season 3 release in 2025?',
+    category: 'Streaming',
+    yesPrice: 0.65,
+    noPrice: 0.35,
+    volume: 1920000,
+    liquidity: 520000,
+    endDate: new Date('2025-12-31'),
+    participants: 5621,
     status: 'active',
-    description: 'Market resolves YES if the Democratic Party candidate wins the 2024 U.S. Presidential Election.',
-    resolutionCriteria: 'Resolves based on official Electoral College results. Will resolve once winner is certified.',
-    priceHistory: generatePriceHistory(0.48),
-    image: 'https://images.unsplash.com/photo-1540910419892-4a36d2c3266c?w=800&h=600&fit=crop'
+    description: 'Resolves YES if Netflix releases Squid Game Season 3 globally before December 31, 2025.',
+    resolutionCriteria: 'Must be officially released on Netflix platform worldwide.',
+    priceHistory: generatePriceHistory(0.65),
+    image: 'https://images.unsplash.com/photo-1522869635100-9f4c5e86aa37?w=800&h=600&fit=crop'
   },
   {
     id: '3',
-    question: 'Will AI surpass human performance in coding by 2026?',
-    category: 'Technology',
-    yesPrice: 0.35,
-    noPrice: 0.65,
-    volume: 680000,
-    liquidity: 230000,
-    endDate: new Date('2026-12-31'),
-    participants: 1523,
+    question: 'Will GTA 6 win Game of the Year 2025?',
+    category: 'Gaming',
+    yesPrice: 0.58,
+    noPrice: 0.42,
+    volume: 3200000,
+    liquidity: 890000,
+    endDate: new Date('2025-12-15'),
+    participants: 12847,
     status: 'active',
-    description: 'Resolves YES if any AI system can beat the median human software engineer on standardized coding tests.',
-    resolutionCriteria: 'Will use benchmarks from HumanEval, LeetCode, and industry standard assessments.',
-    priceHistory: generatePriceHistory(0.35),
-    image: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=800&h=600&fit=crop'
+    description: 'Market resolves YES if Grand Theft Auto 6 wins Game of the Year at The Game Awards 2025.',
+    resolutionCriteria: 'Based on official The Game Awards ceremony results.',
+    priceHistory: generatePriceHistory(0.58),
+    image: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRCcRhliiRTLN3l-E4-xjOhVZmuhdie7sZB1A&s'
   },
   {
     id: '4',
-    question: 'Will SpaceX successfully land humans on Mars before 2030?',
-    category: 'Science',
-    yesPrice: 0.23,
-    noPrice: 0.77,
-    volume: 920000,
-    liquidity: 310000,
-    endDate: new Date('2030-12-31'),
-    participants: 3421,
+    question: 'Will Taylor Swift announce a new album in 2025?',
+    category: 'Music',
+    yesPrice: 0.81,
+    noPrice: 0.19,
+    volume: 1680000,
+    liquidity: 450000,
+    endDate: new Date('2025-12-31'),
+    participants: 7234,
     status: 'active',
-    description: 'Market resolves YES if SpaceX successfully lands a crewed mission on Mars surface before January 1, 2030.',
-    resolutionCriteria: 'Requires official confirmation from SpaceX and NASA. Crew must survive landing.',
-    priceHistory: generatePriceHistory(0.23),
-    image: 'https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?w=800&h=600&fit=crop'
+    description: 'Resolves YES if Taylor Swift officially announces a new studio album (not re-recording) in 2025.',
+    resolutionCriteria: 'Must be official announcement from Taylor Swift or her label.',
+    priceHistory: generatePriceHistory(0.81),
+    image: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=800&h=600&fit=crop'
   },
   {
     id: '5',
-    question: 'Will the Lakers win the 2025 NBA Championship?',
-    category: 'Sports',
-    yesPrice: 0.18,
-    noPrice: 0.82,
-    volume: 1100000,
-    liquidity: 380000,
-    endDate: new Date('2025-06-30'),
-    participants: 4892,
+    question: 'Will PewDiePie return to regular uploads in 2025?',
+    category: 'YouTube',
+    yesPrice: 0.23,
+    noPrice: 0.77,
+    volume: 890000,
+    liquidity: 280000,
+    endDate: new Date('2025-12-31'),
+    participants: 4521,
     status: 'active',
-    description: 'Resolves YES if Los Angeles Lakers win the 2024-2025 NBA Championship.',
-    resolutionCriteria: 'Based on official NBA Finals results. Must win the championship series.',
-    priceHistory: generatePriceHistory(0.18),
-    image: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=800&h=600&fit=crop'
+    description: 'Market resolves YES if PewDiePie uploads at least 10 videos per month for 3 consecutive months in 2025.',
+    resolutionCriteria: 'Based on videos published on PewDiePie\'s main YouTube channel.',
+    priceHistory: generatePriceHistory(0.23),
+    image: 'https://images.unsplash.com/photo-1616469829581-73993eb86b02?w=800&h=600&fit=crop',
+    sourceUrl: 'https://youtube.com/@PewDiePie'
   },
   {
     id: '6',
-    question: 'Will Ethereum switch to a new consensus mechanism in 2025?',
-    category: 'Crypto',
-    yesPrice: 0.12,
-    noPrice: 0.88,
-    volume: 540000,
-    liquidity: 180000,
-    endDate: new Date('2025-12-31'),
-    participants: 892,
+    question: 'Will Avatar 3 gross over $2B worldwide?',
+    category: 'Movies',
+    yesPrice: 0.67,
+    noPrice: 0.33,
+    volume: 2100000,
+    liquidity: 620000,
+    endDate: new Date('2026-06-30'),
+    participants: 6892,
     status: 'active',
-    description: 'Market resolves YES if Ethereum mainnet implements a consensus mechanism change beyond current PoS.',
-    resolutionCriteria: 'Must be official Ethereum Foundation announcement and deployment to mainnet.',
-    priceHistory: generatePriceHistory(0.12),
-    image: 'https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=800&h=600&fit=crop'
+    description: 'Resolves YES if Avatar: Fire and Ash grosses over $2 billion at the worldwide box office.',
+    resolutionCriteria: 'Based on Box Office Mojo or official Disney/20th Century reports.',
+    priceHistory: generatePriceHistory(0.67),
+    image: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800&h=600&fit=crop'
   },
   {
     id: '7',
-    question: 'Will global average temperature increase by 1.5°C above pre-industrial levels?',
-    category: 'Science',
-    yesPrice: 0.71,
-    noPrice: 0.29,
-    volume: 780000,
-    liquidity: 260000,
-    endDate: new Date('2025-12-31'),
-    participants: 2134,
+    question: 'Will IShowSpeed hit 50M YouTube subs by June 2025?',
+    category: 'YouTube',
+    yesPrice: 0.54,
+    noPrice: 0.46,
+    volume: 1340000,
+    liquidity: 380000,
+    endDate: new Date('2025-06-30'),
+    participants: 5123,
     status: 'active',
-    description: 'Resolves YES if IPCC or NOAA confirms 1.5°C warming threshold has been crossed.',
-    resolutionCriteria: 'Based on official IPCC annual reports and NOAA climate data.',
-    priceHistory: generatePriceHistory(0.71),
-    image: 'https://images.unsplash.com/photo-1611273426858-450d8e3c9fce?w=800&h=600&fit=crop'
+    description: 'Market resolves YES if IShowSpeed\'s main YouTube channel reaches 50 million subscribers before July 1, 2025.',
+    resolutionCriteria: 'Based on official YouTube subscriber count.',
+    priceHistory: generatePriceHistory(0.54),
+    image: 'https://images.unsplash.com/photo-1598550476439-6847785fcea6?w=800&h=600&fit=crop',
+    sourceUrl: 'https://youtube.com/@IShowSpeed',
+    targetValue: '50000000'
   },
   {
     id: '8',
-    question: 'Will Apple release an AI-powered Mac by end of 2024?',
-    category: 'Technology',
-    yesPrice: 0.89,
-    noPrice: 0.11,
-    volume: 1680000,
-    liquidity: 520000,
-    endDate: new Date('2024-12-31'),
-    participants: 6234,
+    question: 'Will Stranger Things finale break Netflix viewing records?',
+    category: 'TV Shows',
+    yesPrice: 0.78,
+    noPrice: 0.22,
+    volume: 1560000,
+    liquidity: 420000,
+    endDate: new Date('2025-12-31'),
+    participants: 4892,
     status: 'ending-soon',
-    description: 'Market resolves YES if Apple announces and releases a Mac with dedicated AI processing chip.',
-    resolutionCriteria: 'Must be officially released and available for purchase. AI features must be prominently marketed.',
-    priceHistory: generatePriceHistory(0.89),
-    image: 'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=800&h=600&fit=crop'
+    description: 'Resolves YES if Stranger Things Season 5 premiere becomes the most-watched Netflix premiere in first 7 days.',
+    resolutionCriteria: 'Based on official Netflix viewership data releases.',
+    priceHistory: generatePriceHistory(0.78),
+    image: 'https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=800&h=600&fit=crop'
+  },
+  {
+    id: '9',
+    question: 'Will Drake release Certified Lover Boy 2 in 2025?',
+    category: 'Music',
+    yesPrice: 0.41,
+    noPrice: 0.59,
+    volume: 920000,
+    liquidity: 290000,
+    endDate: new Date('2025-12-31'),
+    participants: 3456,
+    status: 'active',
+    description: 'Market resolves YES if Drake releases a sequel album titled "Certified Lover Boy 2" or similar in 2025.',
+    resolutionCriteria: 'Must be officially released on streaming platforms.',
+    priceHistory: generatePriceHistory(0.41),
+    image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&h=600&fit=crop'
+  },
+  {
+    id: '10',
+    question: 'Will Kai Cenat break his own streaming record in 2025?',
+    category: 'Streaming',
+    yesPrice: 0.62,
+    noPrice: 0.38,
+    volume: 1180000,
+    liquidity: 340000,
+    endDate: new Date('2025-12-31'),
+    participants: 6234,
+    status: 'active',
+    description: 'Resolves YES if Kai Cenat breaks his own peak concurrent viewer record on Twitch during 2025.',
+    resolutionCriteria: 'Based on Twitch Tracker or official Twitch statistics.',
+    priceHistory: generatePriceHistory(0.62),
+    image: 'https://images.unsplash.com/photo-1560169897-fc0cdbdfa4d5?w=800&h=600&fit=crop'
   }
 ];
 
-export const useStore = create<StoreState>((set) => ({
+// Generate order books for each market
+const initialOrderBooks: Record<string, OrderBook> = {};
+demoMarkets.forEach(market => {
+  initialOrderBooks[market.id] = generateOrderBook(market.yesPrice);
+});
+
+export const useStore = create<StoreState>((set, get) => ({
   markets: demoMarkets,
   positions: [],
   balance: 10000,
-  
-  addPosition: (position) => set((state) => ({
-    positions: [...state.positions, position],
-    balance: state.balance - (position.shares * position.entryPrice)
-  })),
+  lockedBalance: 0,
+  orders: [],
+  orderBooks: initialOrderBooks,
   
   updateMarketPrice: (marketId, yesPrice) => set((state) => ({
     markets: state.markets.map(m => 
@@ -200,5 +327,63 @@ export const useStore = create<StoreState>((set) => ({
         ? { ...m, yesPrice, noPrice: 1 - yesPrice }
         : m
     )
-  }))
+  })),
+  
+  placeOrder: (orderData) => {
+    const order: Order = {
+      ...orderData,
+      id: `order-${Date.now()}`,
+      filled: 0,
+      status: 'open',
+      createdAt: new Date()
+    };
+    
+    set((state) => {
+      const orderCost = order.price * order.size / 100;
+      
+      if (state.balance < orderCost) {
+        return state;
+      }
+      
+      return {
+        orders: [...state.orders, order],
+        balance: state.balance - orderCost,
+        lockedBalance: state.lockedBalance + orderCost
+      };
+    });
+    
+    return order;
+  },
+  
+  cancelOrder: (orderId) => set((state) => {
+    const order = state.orders.find(o => o.id === orderId);
+    if (!order || order.status !== 'open') return state;
+    
+    const refund = (order.size - order.filled) * order.price / 100;
+    
+    return {
+      orders: state.orders.map(o => 
+        o.id === orderId ? { ...o, status: 'cancelled' as const } : o
+      ),
+      balance: state.balance + refund,
+      lockedBalance: state.lockedBalance - refund
+    };
+  }),
+  
+  addPosition: (position) => set((state) => ({
+    positions: [...state.positions, position],
+    balance: state.balance - (position.shares * position.entryPrice)
+  })),
+  
+  deposit: (amount) => set((state) => ({
+    balance: state.balance + amount
+  })),
+  
+  withdraw: (amount) => {
+    const state = get();
+    if (state.balance < amount) return false;
+    
+    set({ balance: state.balance - amount });
+    return true;
+  }
 }));

@@ -1,7 +1,7 @@
-import { Link } from 'react-router-dom';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { 
-  TrendingUp, 
+  Clapperboard, 
   Menu, 
   User, 
   Wallet, 
@@ -22,33 +22,34 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn } from '@/lib/utils';
 
 export const Header = () => {
   const isLoggedIn = true;
 
   return (
-    <header className="sticky top-3 z-50 mx-4 lg:mx-6">
-      <div className="max-w-7xl mx-auto">
-        <nav className="navbar-blur rounded-2xl border border-border/40 dark:border-border/30 shadow-lg shadow-black/5 dark:shadow-black/20">
+    <header className="sticky top-0 z-50 w-full navbar-blur border-b border-border/40">
+      <div className="max-w-[1400px] mx-auto">
+        <nav>
           <div className="flex h-14 items-center justify-between px-4 lg:px-6">
             <div className="flex items-center gap-8">
-              <Link to="/" className="flex items-center gap-2.5 font-bold text-lg group">
-                <div className="p-1.5 rounded-lg bg-primary/10 group-hover:bg-primary/15 transition-colors">
-                  <TrendingUp className="h-4 w-4 text-primary" />
+              <Link href="/" className="flex items-center gap-2.5 font-bold text-lg group">
+                <div className="p-1.5 rounded-lg bg-purple-500/10 group-hover:bg-purple-500/15 transition-colors">
+                  <Clapperboard className="h-5 w-5 text-purple-400" />
                 </div>
-                <span className="tracking-tight">PredictX</span>
+                <span className="tracking-tight">Finwe</span>
               </Link>
               
               <nav className="hidden md:flex items-center gap-1">
                 <Link 
-                  to="/markets" 
-                  className="px-3 py-2 text-sm font-medium text-muted-foreground rounded-lg transition-all hover:text-foreground hover:bg-muted/50 hover-scale"
+                  href="/markets" 
+                  className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground rounded-lg transition-colors hover:bg-muted/50"
                 >
                   Markets
                 </Link>
                 <Link 
-                  to="/portfolio" 
-                  className="px-3 py-2 text-sm font-medium text-muted-foreground rounded-lg transition-all hover:text-foreground hover:bg-muted/50 hover-scale"
+                  href="/portfolio" 
+                  className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground rounded-lg transition-colors hover:bg-muted/50"
                 >
                   Portfolio
                 </Link>
@@ -59,19 +60,16 @@ export const Header = () => {
               {isLoggedIn ? (
                 <>
                   {/* Create Market Button */}
-                  <Link to="/create-market">
-                    <Button 
-                      size="sm" 
-                      className="hidden sm:flex items-center gap-1.5 h-8 px-3 bg-success/10 text-success dark:text-emerald-400 border border-success/20 hover:bg-success/20 hover:border-success/30 transition-all hover-scale"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
+                  <Link href="/create-market">
+                    <Button size="sm" variant="outline" className="rounded-lg border border-success/30 bg-success/5 hover:bg-success/10 transition-colors text-success">
+                      <Plus className="h-4 w-4" />
                       <span className="text-sm font-medium">Create</span>
                     </Button>
                   </Link>
 
                   {/* Balance Display */}
-                  <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-muted/30 dark:bg-muted/20 rounded-lg border border-border/30 dark:border-border/20">
-                    <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
+                  <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 surface-input rounded-lg">
+                    <Wallet className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-semibold tabular-nums">$10,000</span>
                   </div>
 
@@ -97,19 +95,19 @@ export const Header = () => {
                       </DropdownMenuLabel>
                       <DropdownMenuSeparator className="bg-border/50" />
                       <DropdownMenuItem asChild className="hover-scale">
-                        <Link to="/portfolio" className="flex items-center cursor-pointer">
+                        <Link href="/portfolio" className="flex items-center cursor-pointer">
                           <BarChart3 className="mr-2 h-4 w-4" />
                           Portfolio
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild className="hover-scale">
-                        <Link to="/account" className="flex items-center cursor-pointer">
+                        <Link href="/account" className="flex items-center cursor-pointer">
                           <User className="mr-2 h-4 w-4" />
                           Account
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild className="hover-scale">
-                        <Link to="/create-market" className="flex items-center cursor-pointer">
+                        <Link href="/create-market" className="flex items-center cursor-pointer">
                           <Plus className="mr-2 h-4 w-4" />
                           Create Market
                         </Link>
@@ -134,12 +132,12 @@ export const Header = () => {
               ) : (
                 <>
                   <ThemeToggle />
-                  <Link to="/auth">
+                  <Link href="/auth">
                     <Button variant="ghost" size="sm" className="text-sm font-medium hover-scale">
                       Log in
                     </Button>
                   </Link>
-                  <Link to="/auth">
+                  <Link href="/auth">
                     <Button size="sm" className="text-sm font-medium hover-scale">
                       Sign up
                     </Button>

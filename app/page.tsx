@@ -1,156 +1,373 @@
 "use client";
-import { useWalletConnection } from "@solana/react-hooks";
 
-export default function Home() {
-  const { connectors, connect, disconnect, wallet, status } =
-    useWalletConnection();
+import { useState, useEffect } from "react";
+import { Header } from "@/components/Header";
+import { Footer } from "@/components/Footer";
+import { MarketCard } from "@/components/MarketCard";
+import { MarketCardSkeleton } from "@/components/MarketCardSkeleton";
+import { PageTransition } from "@/components/PageTransition";
+import { Button } from "@/components/ui/button";
+import { useStore } from "@/lib/store";
+import { 
+  ArrowRight, 
+  Clapperboard, 
+  TrendingUp, 
+  Users, 
+  Zap,
+  Play,
+  BookOpen,
+  Shield
+} from "lucide-react";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
 
-  const address = wallet?.account.address.toString();
+const Home = () => {
+  const markets = useStore((state) => state.markets);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Featured markets for hero
+  const featuredMarkets = markets.slice(0, 3);
+
+  // Trending markets (by volume)
+  const trendingMarkets = [...markets]
+    .sort((a, b) => b.volume - a.volume)
+    .slice(0, 6);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLoading(false), 800);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
-    <div className="relative min-h-screen overflow-x-clip bg-bg1 text-foreground">
-      <main className="relative z-10 mx-auto flex min-h-screen max-w-4xl flex-col gap-10 border-x border-border-low px-6 py-16">
-        <header className="space-y-3">
-          <p className="text-sm uppercase tracking-[0.18em] text-muted">
-            Solana starter kit
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
-            Ship a Solana dapp fast
-          </h1>
-          <p className="max-w-3xl text-base leading-relaxed text-muted">
-            Drop in <code className="font-mono">@solana/react-hooks</code>, wrap
-            your tree once, and you get wallet connect/disconnect plus
-            ready-to-use hooks for balances and transactions—no manual RPC
-            wiring.
-          </p>
-          <ul className="mt-4 space-y-2 text-sm text-foreground">
-            <li className="flex gap-2">
-              <span
-                className="mt-1.5 h-2 w-2 rounded-full bg-foreground/60"
-                aria-hidden
-              />
-              <div>
-                <a
-                  className="font-medium underline underline-offset-2"
-                  href="https://solana.com/docs"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Solana docs
-                </a>{" "}
-                — core concepts, RPC, programs, and client patterns.
-              </div>
-            </li>
-            <li className="flex gap-2">
-              <span
-                className="mt-1.5 h-2 w-2 rounded-full bg-foreground/60"
-                aria-hidden
-              />
-              <div>
-                <a
-                  className="font-medium underline underline-offset-2"
-                  href="https://www.anchor-lang.com/docs/introduction"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Anchor docs
-                </a>{" "}
-                — build and test programs with IDL, macros, and type-safe
-                clients.
-              </div>
-            </li>
-            <li className="flex gap-2">
-              <span
-                className="mt-1.5 h-2 w-2 rounded-full bg-foreground/60"
-                aria-hidden
-              />
-              <div>
-                <a
-                  className="font-medium underline underline-offset-2"
-                  href="https://faucet.solana.com/"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Solana faucet (devnet)
-                </a>{" "}
-                — grab free devnet SOL to try transfers and transactions.
-              </div>
-            </li>
-            <li className="flex gap-2">
-              <span
-                className="mt-1.5 h-2 w-2 rounded-full bg-foreground/60"
-                aria-hidden
-              />
-              <div>
-                <a
-                  className="font-medium underline underline-offset-2"
-                  href="https://github.com/solana-foundation/framework-kit/tree/main/packages/react-hooks"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  @solana/react-hooks README
-                </a>{" "}
-                — how this starter wires the client, connectors, and hooks.
-              </div>
-            </li>
-          </ul>
-        </header>
+    <div className="min-h-screen flex flex-col bg-background">
+      <Header />
 
-        <section className="w-full max-w-3xl space-y-4 rounded-2xl border border-border-low bg-card p-6 shadow-[0_20px_80px_-50px_rgba(0,0,0,0.35)]">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-lg font-semibold">Wallet connection</p>
-              <p className="text-sm text-muted">
-                Pick any discovered connector and manage connect / disconnect in
-                one spot.
-              </p>
+      <PageTransition>
+        <main className="flex-1">
+          {/* Hero Section */}
+          <section className="relative overflow-hidden">
+            {/* Animated Background */}
+            <div className="absolute inset-0 overflow-hidden">
+              <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-gradient-to-br from-purple-500/8 to-transparent rounded-full blur-3xl animate-pulse-subtle" />
+              <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-gradient-to-br from-blue-500/8 to-transparent rounded-full blur-3xl animate-pulse-subtle" style={{ animationDelay: "2s" }} />
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-br from-success/5 to-transparent rounded-full blur-3xl" />
             </div>
-            <span className="rounded-full bg-cream px-3 py-1 text-xs font-semibold uppercase tracking-wide text-foreground/80">
-              {status === "connected" ? "Connected" : "Not connected"}
-            </span>
-          </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            {connectors.map((connector) => (
-              <button
-                key={connector.id}
-                onClick={() => connect(connector.id)}
-                disabled={status === "connecting"}
-                className="group flex items-center justify-between rounded-xl border border-border-low bg-card px-4 py-3 text-left text-sm font-medium transition hover:-translate-y-0.5 hover:shadow-sm cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <span className="flex flex-col">
-                  <span className="text-base">{connector.name}</span>
-                  <span className="text-xs text-muted">
-                    {status === "connecting"
-                      ? "Connecting…"
-                      : status === "connected" &&
-                          wallet?.connector.id === connector.id
-                        ? "Active"
-                        : "Tap to connect"}
+            {/* Grid Pattern */}
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(128,128,128,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(128,128,128,0.03)_1px,transparent_1px)] bg-[size:64px_64px]" />
+
+            <div className="relative container mx-auto px-4 pt-20 pb-32 md:pt-32 md:pb-40">
+              {/* Badge */}
+              <div className="flex justify-center mb-8">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-muted/50 border border-border/50 text-xs font-medium text-muted-foreground backdrop-blur-sm">
+                  <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                  Central Limit Order Book • Live Markets
+                </div>
+              </div>
+
+              {/* Main Headline */}
+              <div className="text-center max-w-5xl mx-auto mb-10">
+                <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-tight mb-6">
+                  <span className="block">Predict the Future of</span>
+                  <span className="block bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 bg-clip-text text-transparent">
+                    Entertainment
                   </span>
+                </h1>
+                <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto font-light leading-relaxed">
+                  Trade on YouTube milestones, streaming records, box office hits, and gaming events. 
+                  Powered by a transparent order book.
+                </p>
+              </div>
+
+              {/* CTA Buttons */}
+              <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
+                <Button
+                  size="lg"
+                  className="group h-14 px-8 text-base font-semibold w-full sm:w-auto bg-foreground text-background hover:bg-foreground/90"
+                  asChild
+                >
+                  <Link href="/markets">
+                    <Play className="mr-2 h-4 w-4" />
+                    Start Trading
+                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </Link>
+                </Button>
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-14 px-8 text-base font-medium w-full sm:w-auto border-border/50 hover:bg-muted/50"
+                  asChild
+                >
+                  <Link href="#how-it-works">
+                    <BookOpen className="mr-2 h-4 w-4" />
+                    How It Works
+                  </Link>
+                </Button>
+              </div>
+
+              {/* Stats Row */}
+              <div className="grid grid-cols-3 gap-6 max-w-2xl mx-auto">
+                {[
+                  { value: "$4.2M", label: "Trading Volume" },
+                  { value: "28K+", label: "Active Traders" },
+                  { value: "150+", label: "Live Markets" },
+                ].map((stat, i) => (
+                  <div key={i} className="text-center">
+                    <div className="text-2xl md:text-3xl font-bold tracking-tight mb-1">
+                      {stat.value}
+                    </div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider">
+                      {stat.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* Live Ticker */}
+          <div className="border-y border-border/30 bg-muted/20 overflow-hidden">
+            <div className="container mx-auto px-4 py-3 flex items-center gap-4">
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                <span className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                  Live
                 </span>
-                <span
-                  aria-hidden
-                  className="h-2.5 w-2.5 rounded-full bg-border-low transition group-hover:bg-primary/80"
-                />
-              </button>
-            ))}
+              </div>
+              <div className="overflow-hidden flex-1">
+                <div className="flex gap-8 animate-scroll whitespace-nowrap">
+                  {[...markets, ...markets].slice(0, 16).map((market, idx) => (
+                    <Link
+                      key={`${market.id}-${idx}`}
+                      href={`/market/${market.id}`}
+                      className="flex items-center gap-2.5 shrink-0 text-sm group"
+                    >
+                      <span className="font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+                        {market.question.slice(0, 35)}...
+                      </span>
+                      <span
+                        className={cn(
+                          "font-bold tabular-nums px-2 py-0.5 rounded-md text-xs",
+                          market.yesPrice > 0.5
+                            ? "text-success bg-success/10"
+                            : "text-danger bg-danger/10"
+                        )}
+                      >
+                        {Math.round(market.yesPrice * 100)}%
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 border-t border-border-low pt-4 text-sm">
-            <span className="rounded-lg border border-border-low bg-cream px-3 py-2 font-mono text-xs">
-              {address ?? "No wallet connected"}
-            </span>
-            <button
-              onClick={() => disconnect()}
-              disabled={status !== "connected"}
-              className="inline-flex items-center gap-2 rounded-lg border border-border-low bg-card px-3 py-2 font-medium transition hover:-translate-y-0.5 hover:shadow-sm cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Disconnect
-            </button>
-          </div>
-        </section>
-      </main>
+          {/* Featured Markets */}
+          <section className="py-20 md:py-28">
+            <div className="container mx-auto px-4">
+              <div className="flex items-end justify-between mb-10">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Zap className="h-4 w-4 text-yellow-500" />
+                    <span className="text-sm font-medium text-yellow-500 uppercase tracking-wider">
+                      Featured
+                    </span>
+                  </div>
+                  <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
+                    Hot Markets Right Now
+                  </h2>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  asChild
+                  className="hidden sm:flex text-muted-foreground hover:text-foreground"
+                >
+                  <Link href="/markets">
+                    View All
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+
+              {/* Grid */}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {isLoading
+                  ? Array.from({ length: 3 }).map((_, i) => (
+                      <MarketCardSkeleton key={i} />
+                    ))
+                  : featuredMarkets.map((market, i) => (
+                      <div
+                        key={market.id}
+                        className="stagger-in"
+                        style={{ animationDelay: `${i * 80}ms` }}
+                      >
+                        <MarketCard market={market} />
+                      </div>
+                    ))}
+              </div>
+            </div>
+          </section>
+
+          {/* How It Works */}
+          <section id="how-it-works" className="py-20 md:py-28 bg-muted/30 border-y border-border/20">
+            <div className="container mx-auto px-4">
+              <div className="text-center mb-16">
+                <h2 className="text-2xl md:text-3xl font-bold tracking-tight mb-4">
+                  How Finwe Works
+                </h2>
+                <p className="text-muted-foreground max-w-xl mx-auto">
+                  Trade predictions using our transparent Central Limit Order Book system.
+                </p>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                {[
+                  {
+                    icon: Clapperboard,
+                    title: "Pick a Market",
+                    description: "Browse entertainment markets from YouTube milestones to box office predictions.",
+                    color: "text-purple-500",
+                    bg: "bg-purple-500/10"
+                  },
+                  {
+                    icon: TrendingUp,
+                    title: "Place Your Order",
+                    description: "Buy YES or NO shares on the order book. Set limit orders or trade at market price.",
+                    color: "text-success",
+                    bg: "bg-success/10"
+                  },
+                  {
+                    icon: Users,
+                    title: "Win on Resolution",
+                    description: "When the event resolves, winning shares pay out $1 each. Lose and shares go to zero.",
+                    color: "text-blue-500",
+                    bg: "bg-blue-500/10"
+                  },
+                ].map((step, i) => (
+                  <div key={i} className="panel-card p-6 text-center stagger-in" style={{ animationDelay: `${i * 100}ms` }}>
+                    <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5", step.bg)}>
+                      <step.icon className={cn("h-7 w-7", step.color)} />
+                    </div>
+                    <h3 className="font-semibold text-lg mb-2">{step.title}</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{step.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* Trending Markets */}
+          <section className="py-20 md:py-28">
+            <div className="container mx-auto px-4">
+              <div className="flex items-end justify-between mb-10">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp className="h-4 w-4 text-success" />
+                    <span className="text-sm font-medium text-success uppercase tracking-wider">
+                      Trending
+                    </span>
+                  </div>
+                  <h2 className="text-2xl md:text-3xl font-bold tracking-tight">
+                    Highest Volume Markets
+                  </h2>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  asChild
+                  className="hidden sm:flex text-muted-foreground hover:text-foreground"
+                >
+                  <Link href="/markets">
+                    View All
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {isLoading
+                  ? Array.from({ length: 6 }).map((_, i) => (
+                      <MarketCardSkeleton key={i} />
+                    ))
+                  : trendingMarkets.map((market, i) => (
+                      <div
+                        key={market.id}
+                        className="stagger-in"
+                        style={{ animationDelay: `${i * 60}ms` }}
+                      >
+                        <MarketCard market={market} />
+                      </div>
+                    ))}
+              </div>
+            </div>
+          </section>
+
+          {/* Trust Section */}
+          <section className="py-16 border-t border-border/20">
+            <div className="container mx-auto px-4">
+              <div className="flex flex-col md:flex-row items-center justify-center gap-8 md:gap-16 text-center md:text-left">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center">
+                    <Shield className="h-5 w-5 text-success" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm">Transparent Order Book</div>
+                    <div className="text-xs text-muted-foreground">All trades visible on-chain</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
+                    <Zap className="h-5 w-5 text-purple-500" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm">Instant Settlement</div>
+                    <div className="text-xs text-muted-foreground">Winnings paid immediately</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
+                    <Users className="h-5 w-5 text-blue-500" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-sm">Community Driven</div>
+                    <div className="text-xs text-muted-foreground">Create your own markets</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* CTA Section */}
+          <section className="py-20 md:py-28">
+            <div className="container mx-auto px-4">
+              <div className="panel-card p-10 md:p-16 text-center max-w-3xl mx-auto">
+                <h2 className="text-2xl md:text-4xl font-bold tracking-tight mb-4">
+                  Ready to start trading?
+                </h2>
+                <p className="text-muted-foreground mb-8 max-w-md mx-auto">
+                  Join thousands of traders predicting the future of entertainment.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                  <Button size="lg" className="h-12 px-8" asChild>
+                    <Link href="/markets">
+                      Explore Markets
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button size="lg" variant="outline" className="h-12 px-8" asChild>
+                    <Link href="/auth">Create Account</Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </PageTransition>
+
+      <Footer />
     </div>
   );
-}
+};
+
+export default Home;

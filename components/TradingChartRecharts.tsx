@@ -1,3 +1,5 @@
+'use client';
+
 import { useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -60,7 +62,7 @@ export const TradingChartRecharts = ({ data }: TradingChartRechartsProps) => {
   const changePercent = previousValue > 0 ? (change / previousValue) * 100 : 0;
 
   return (
-    <Card className="border-border/30 dark:border-border/20 dark:bg-gradient-to-b dark:from-[hsl(240,6%,8%)] dark:to-[hsl(240,6%,5%)]">
+    <Card className="panel-card">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
