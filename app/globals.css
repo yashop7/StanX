@@ -104,6 +104,35 @@
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
   }
+
+  /* Global cursor-pointer for all interactive elements */
+  button,
+  [role="button"],
+  [type="button"],
+  [type="submit"],
+  [type="reset"],
+  a,
+  label[for],
+  select,
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="switch"],
+  [role="link"],
+  [role="combobox"],
+  [data-radix-collection-item],
+  [data-state] {
+    cursor: pointer;
+  }
+
+  /* Disabled elements should not have pointer cursor */
+  button:disabled,
+  [disabled],
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }
 
 .dark {

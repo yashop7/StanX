@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { 
-  Clapperboard, 
+  TrendingUp, 
   Menu, 
   User, 
   Wallet, 
@@ -34,10 +34,10 @@ export const Header = () => {
           <div className="flex h-14 items-center justify-between px-4 lg:px-6">
             <div className="flex items-center gap-8">
               <Link href="/" className="flex items-center gap-2.5 font-bold text-lg group">
-                <div className="p-1.5 rounded-lg bg-purple-500/10 group-hover:bg-purple-500/15 transition-colors">
-                  <Clapperboard className="h-5 w-5 text-purple-400" />
+                <div className="p-1.5 rounded-lg bg-primary/10 group-hover:bg-primary/15 transition-colors">
+                  <TrendingUp className="h-5 w-5 text-primary" />
                 </div>
-                <span className="tracking-tight">Finwe</span>
+                <span className="tracking-tight">PredictX</span>
               </Link>
               
               <nav className="hidden md:flex items-center gap-1">
