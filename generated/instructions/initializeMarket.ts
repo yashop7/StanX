@@ -7,6 +7,8 @@
  */
 
 import {
+  addDecoderSizePrefix,
+  addEncoderSizePrefix,
   combineCodec,
   fixDecoderSize,
   fixEncoderSize,
@@ -20,13 +22,17 @@ import {
   getStructEncoder,
   getU32Decoder,
   getU32Encoder,
+  getUtf8Decoder,
+  getUtf8Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+  SolanaError,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
   type Address,
-  type FixedSizeCodec,
-  type FixedSizeDecoder,
-  type FixedSizeEncoder,
+  type Codec,
+  type Decoder,
+  type Encoder,
   type Instruction,
   type InstructionWithAccounts,
   type InstructionWithData,
@@ -36,13 +42,13 @@ import {
   type WritableAccount,
   type WritableSignerAccount,
 } from "@solana/kit";
-import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
 import {
-  expectAddress,
-  expectSome,
   getAccountMetaFactory,
-  type ResolvedAccount,
-} from "../shared";
+  getAddressFromResolvedInstructionAccount,
+  getNonNullResolvedInstructionInput,
+  type ResolvedInstructionAccount,
+} from "@solana/program-client-core";
+import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
 
 export const INITIALIZE_MARKET_DISCRIMINATOR = new Uint8Array([
   35, 35, 189, 193, 155, 48, 170, 203,
@@ -121,33 +127,37 @@ export type InitializeMarketInstructionData = {
   discriminator: ReadonlyUint8Array;
   marketId: number;
   settlementDeadline: bigint;
+  metadataUrl: string;
 };
 
 export type InitializeMarketInstructionDataArgs = {
   marketId: number;
   settlementDeadline: number | bigint;
+  metadataUrl: string;
 };
 
-export function getInitializeMarketInstructionDataEncoder(): FixedSizeEncoder<InitializeMarketInstructionDataArgs> {
+export function getInitializeMarketInstructionDataEncoder(): Encoder<InitializeMarketInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["marketId", getU32Encoder()],
       ["settlementDeadline", getI64Encoder()],
+      ["metadataUrl", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
     ]),
     (value) => ({ ...value, discriminator: INITIALIZE_MARKET_DISCRIMINATOR }),
   );
 }
 
-export function getInitializeMarketInstructionDataDecoder(): FixedSizeDecoder<InitializeMarketInstructionData> {
+export function getInitializeMarketInstructionDataDecoder(): Decoder<InitializeMarketInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["marketId", getU32Decoder()],
     ["settlementDeadline", getI64Decoder()],
+    ["metadataUrl", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
   ]);
 }
 
-export function getInitializeMarketInstructionDataCodec(): FixedSizeCodec<
+export function getInitializeMarketInstructionDataCodec(): Codec<
   InitializeMarketInstructionDataArgs,
   InitializeMarketInstructionData
 > {
@@ -185,6 +195,7 @@ export type InitializeMarketAsyncInput<
   rent?: Address<TAccountRent>;
   marketId: InitializeMarketInstructionDataArgs["marketId"];
   settlementDeadline: InitializeMarketInstructionDataArgs["settlementDeadline"];
+  metadataUrl: InitializeMarketInstructionDataArgs["metadataUrl"];
 };
 
 export async function getInitializeMarketInstructionAsync<
@@ -255,7 +266,7 @@ export async function getInitializeMarketInstructionAsync<
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -267,7 +278,9 @@ export async function getInitializeMarketInstructionAsync<
       programAddress,
       seeds: [
         getBytesEncoder().encode(new Uint8Array([109, 97, 114, 107, 101, 116])),
-        getU32Encoder().encode(expectSome(args.marketId)),
+        getU32Encoder().encode(
+          getNonNullResolvedInstructionInput("marketId", args.marketId),
+        ),
       ],
     });
   }
@@ -276,7 +289,9 @@ export async function getInitializeMarketInstructionAsync<
       programAddress,
       seeds: [
         getBytesEncoder().encode(new Uint8Array([118, 97, 117, 108, 116])),
-        getU32Encoder().encode(expectSome(args.marketId)),
+        getU32Encoder().encode(
+          getNonNullResolvedInstructionInput("marketId", args.marketId),
+        ),
       ],
     });
   }
@@ -287,7 +302,9 @@ export async function getInitializeMarketInstructionAsync<
         getBytesEncoder().encode(
           new Uint8Array([111, 117, 116, 99, 111, 109, 101, 95, 97]),
         ),
-        getU32Encoder().encode(expectSome(args.marketId)),
+        getU32Encoder().encode(
+          getNonNullResolvedInstructionInput("marketId", args.marketId),
+        ),
       ],
     });
   }
@@ -298,7 +315,9 @@ export async function getInitializeMarketInstructionAsync<
         getBytesEncoder().encode(
           new Uint8Array([111, 117, 116, 99, 111, 109, 101, 95, 98]),
         ),
-        getU32Encoder().encode(expectSome(args.marketId)),
+        getU32Encoder().encode(
+          getNonNullResolvedInstructionInput("marketId", args.marketId),
+        ),
       ],
     });
   }
@@ -307,9 +326,14 @@ export async function getInitializeMarketInstructionAsync<
       programAddress,
       seeds: [
         getBytesEncoder().encode(new Uint8Array([101, 115, 99, 114, 111, 119])),
-        getU32Encoder().encode(expectSome(args.marketId)),
+        getU32Encoder().encode(
+          getNonNullResolvedInstructionInput("marketId", args.marketId),
+        ),
         getAddressEncoder().encode(
-          expectAddress(accounts.outcomeYesMint.value),
+          getAddressFromResolvedInstructionAccount(
+            "outcomeYesMint",
+            accounts.outcomeYesMint.value,
+          ),
         ),
       ],
     });
@@ -319,8 +343,15 @@ export async function getInitializeMarketInstructionAsync<
       programAddress,
       seeds: [
         getBytesEncoder().encode(new Uint8Array([101, 115, 99, 114, 111, 119])),
-        getU32Encoder().encode(expectSome(args.marketId)),
-        getAddressEncoder().encode(expectAddress(accounts.outcomeNoMint.value)),
+        getU32Encoder().encode(
+          getNonNullResolvedInstructionInput("marketId", args.marketId),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "outcomeNoMint",
+            accounts.outcomeNoMint.value,
+          ),
+        ),
       ],
     });
   }
@@ -331,7 +362,9 @@ export async function getInitializeMarketInstructionAsync<
         getBytesEncoder().encode(
           new Uint8Array([111, 114, 100, 101, 114, 98, 111, 111, 107]),
         ),
-        getU32Encoder().encode(expectSome(args.marketId)),
+        getU32Encoder().encode(
+          getNonNullResolvedInstructionInput("marketId", args.marketId),
+        ),
       ],
     });
   }
@@ -351,18 +384,18 @@ export async function getInitializeMarketInstructionAsync<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.market),
-      getAccountMeta(accounts.authority),
-      getAccountMeta(accounts.collateralMint),
-      getAccountMeta(accounts.collateralVault),
-      getAccountMeta(accounts.outcomeYesMint),
-      getAccountMeta(accounts.outcomeNoMint),
-      getAccountMeta(accounts.yesEscrow),
-      getAccountMeta(accounts.noEscrow),
-      getAccountMeta(accounts.orderbook),
-      getAccountMeta(accounts.systemProgram),
-      getAccountMeta(accounts.tokenProgram),
-      getAccountMeta(accounts.rent),
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("authority", accounts.authority),
+      getAccountMeta("collateralMint", accounts.collateralMint),
+      getAccountMeta("collateralVault", accounts.collateralVault),
+      getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
+      getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
+      getAccountMeta("yesEscrow", accounts.yesEscrow),
+      getAccountMeta("noEscrow", accounts.noEscrow),
+      getAccountMeta("orderbook", accounts.orderbook),
+      getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("rent", accounts.rent),
     ],
     data: getInitializeMarketInstructionDataEncoder().encode(
       args as InitializeMarketInstructionDataArgs,
@@ -413,6 +446,7 @@ export type InitializeMarketInput<
   rent?: Address<TAccountRent>;
   marketId: InitializeMarketInstructionDataArgs["marketId"];
   settlementDeadline: InitializeMarketInstructionDataArgs["settlementDeadline"];
+  metadataUrl: InitializeMarketInstructionDataArgs["metadataUrl"];
 };
 
 export function getInitializeMarketInstruction<
@@ -481,7 +515,7 @@ export function getInitializeMarketInstruction<
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -504,18 +538,18 @@ export function getInitializeMarketInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.market),
-      getAccountMeta(accounts.authority),
-      getAccountMeta(accounts.collateralMint),
-      getAccountMeta(accounts.collateralVault),
-      getAccountMeta(accounts.outcomeYesMint),
-      getAccountMeta(accounts.outcomeNoMint),
-      getAccountMeta(accounts.yesEscrow),
-      getAccountMeta(accounts.noEscrow),
-      getAccountMeta(accounts.orderbook),
-      getAccountMeta(accounts.systemProgram),
-      getAccountMeta(accounts.tokenProgram),
-      getAccountMeta(accounts.rent),
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("authority", accounts.authority),
+      getAccountMeta("collateralMint", accounts.collateralMint),
+      getAccountMeta("collateralVault", accounts.collateralVault),
+      getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
+      getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
+      getAccountMeta("yesEscrow", accounts.yesEscrow),
+      getAccountMeta("noEscrow", accounts.noEscrow),
+      getAccountMeta("orderbook", accounts.orderbook),
+      getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("rent", accounts.rent),
     ],
     data: getInitializeMarketInstructionDataEncoder().encode(
       args as InitializeMarketInstructionDataArgs,
@@ -569,8 +603,13 @@ export function parseInitializeMarketInstruction<
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedInitializeMarketInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 12) {
-    // TODO: Coded error.
-    throw new Error("Not enough accounts");
+    throw new SolanaError(
+      SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+      {
+        actualAccountMetas: instruction.accounts.length,
+        expectedAccountMetas: 12,
+      },
+    );
   }
   let accountIndex = 0;
   const getNextAccount = () => {

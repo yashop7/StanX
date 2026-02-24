@@ -16,6 +16,8 @@ import {
   getStructEncoder,
   getU32Decoder,
   getU32Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+  SolanaError,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
@@ -31,8 +33,11 @@ import {
   type WritableAccount,
   type WritableSignerAccount,
 } from "@solana/kit";
+import {
+  getAccountMetaFactory,
+  type ResolvedInstructionAccount,
+} from "@solana/program-client-core";
 import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
-import { getAccountMetaFactory, type ResolvedAccount } from "../shared";
 
 export const CLOSE_MARKET_DISCRIMINATOR = new Uint8Array([
   88, 154, 248, 186, 48, 14, 123, 244,
@@ -139,7 +144,7 @@ export function getCloseMarketInstruction<
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -148,9 +153,9 @@ export function getCloseMarketInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.authority),
-      getAccountMeta(accounts.market),
-      getAccountMeta(accounts.orderbook),
+      getAccountMeta("authority", accounts.authority),
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("orderbook", accounts.orderbook),
     ],
     data: getCloseMarketInstructionDataEncoder().encode(
       args as CloseMarketInstructionDataArgs,
@@ -186,8 +191,13 @@ export function parseCloseMarketInstruction<
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedCloseMarketInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 3) {
-    // TODO: Coded error.
-    throw new Error("Not enough accounts");
+    throw new SolanaError(
+      SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+      {
+        actualAccountMetas: instruction.accounts.length,
+        expectedAccountMetas: 3,
+      },
+    );
   }
   let accountIndex = 0;
   const getNextAccount = () => {

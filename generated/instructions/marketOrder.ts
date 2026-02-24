@@ -20,6 +20,8 @@ import {
   getU32Encoder,
   getU64Decoder,
   getU64Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+  SolanaError,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
@@ -36,13 +38,13 @@ import {
   type WritableAccount,
   type WritableSignerAccount,
 } from "@solana/kit";
-import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
 import {
-  expectAddress,
-  expectSome,
   getAccountMetaFactory,
-  type ResolvedAccount,
-} from "../shared";
+  getAddressFromResolvedInstructionAccount,
+  getNonNullResolvedInstructionInput,
+  type ResolvedInstructionAccount,
+} from "@solana/program-client-core";
+import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
 import {
   getOrderSideDecoder,
   getOrderSideEncoder,
@@ -281,7 +283,7 @@ export async function getMarketOrderInstructionAsync<
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -295,8 +297,12 @@ export async function getMarketOrderInstructionAsync<
         getBytesEncoder().encode(
           new Uint8Array([117, 115, 101, 114, 95, 115, 116, 97, 116, 115]),
         ),
-        getU32Encoder().encode(expectSome(args.marketId)),
-        getAddressEncoder().encode(expectAddress(accounts.user.value)),
+        getU32Encoder().encode(
+          getNonNullResolvedInstructionInput("marketId", args.marketId),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount("user", accounts.user.value),
+        ),
       ],
     });
   }
@@ -312,18 +318,18 @@ export async function getMarketOrderInstructionAsync<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.user),
-      getAccountMeta(accounts.market),
-      getAccountMeta(accounts.orderbook),
-      getAccountMeta(accounts.collateralVault),
-      getAccountMeta(accounts.userCollateral),
-      getAccountMeta(accounts.userStatsAccount),
-      getAccountMeta(accounts.userOutcomeYes),
-      getAccountMeta(accounts.userOutcomeNo),
-      getAccountMeta(accounts.yesEscrow),
-      getAccountMeta(accounts.noEscrow),
-      getAccountMeta(accounts.systemProgram),
-      getAccountMeta(accounts.tokenProgram),
+      getAccountMeta("user", accounts.user),
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("orderbook", accounts.orderbook),
+      getAccountMeta("collateralVault", accounts.collateralVault),
+      getAccountMeta("userCollateral", accounts.userCollateral),
+      getAccountMeta("userStatsAccount", accounts.userStatsAccount),
+      getAccountMeta("userOutcomeYes", accounts.userOutcomeYes),
+      getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
+      getAccountMeta("yesEscrow", accounts.yesEscrow),
+      getAccountMeta("noEscrow", accounts.noEscrow),
+      getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getMarketOrderInstructionDataEncoder().encode(
       args as MarketOrderInstructionDataArgs,
@@ -448,7 +454,7 @@ export function getMarketOrderInstruction<
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -467,18 +473,18 @@ export function getMarketOrderInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.user),
-      getAccountMeta(accounts.market),
-      getAccountMeta(accounts.orderbook),
-      getAccountMeta(accounts.collateralVault),
-      getAccountMeta(accounts.userCollateral),
-      getAccountMeta(accounts.userStatsAccount),
-      getAccountMeta(accounts.userOutcomeYes),
-      getAccountMeta(accounts.userOutcomeNo),
-      getAccountMeta(accounts.yesEscrow),
-      getAccountMeta(accounts.noEscrow),
-      getAccountMeta(accounts.systemProgram),
-      getAccountMeta(accounts.tokenProgram),
+      getAccountMeta("user", accounts.user),
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("orderbook", accounts.orderbook),
+      getAccountMeta("collateralVault", accounts.collateralVault),
+      getAccountMeta("userCollateral", accounts.userCollateral),
+      getAccountMeta("userStatsAccount", accounts.userStatsAccount),
+      getAccountMeta("userOutcomeYes", accounts.userOutcomeYes),
+      getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
+      getAccountMeta("yesEscrow", accounts.yesEscrow),
+      getAccountMeta("noEscrow", accounts.noEscrow),
+      getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getMarketOrderInstructionDataEncoder().encode(
       args as MarketOrderInstructionDataArgs,
@@ -532,8 +538,13 @@ export function parseMarketOrderInstruction<
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedMarketOrderInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 12) {
-    // TODO: Coded error.
-    throw new Error("Not enough accounts");
+    throw new SolanaError(
+      SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+      {
+        actualAccountMetas: instruction.accounts.length,
+        expectedAccountMetas: 12,
+      },
+    );
   }
   let accountIndex = 0;
   const getNextAccount = () => {

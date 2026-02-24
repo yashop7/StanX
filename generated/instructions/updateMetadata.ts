@@ -20,6 +20,8 @@ import {
   getU32Encoder,
   getUtf8Decoder,
   getUtf8Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+  SolanaError,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
@@ -35,8 +37,11 @@ import {
   type WritableAccount,
   type WritableSignerAccount,
 } from "@solana/kit";
+import {
+  getAccountMetaFactory,
+  type ResolvedInstructionAccount,
+} from "@solana/program-client-core";
 import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
-import { getAccountMetaFactory, type ResolvedAccount } from "../shared";
 
 export const UPDATE_METADATA_DISCRIMINATOR = new Uint8Array([
   170, 182, 43, 239, 97, 78, 225, 186,
@@ -144,7 +149,7 @@ export function getUpdateMetadataInstruction<
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -153,8 +158,8 @@ export function getUpdateMetadataInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.authority),
-      getAccountMeta(accounts.market),
+      getAccountMeta("authority", accounts.authority),
+      getAccountMeta("market", accounts.market),
     ],
     data: getUpdateMetadataInstructionDataEncoder().encode(
       args as UpdateMetadataInstructionDataArgs,
@@ -188,8 +193,13 @@ export function parseUpdateMetadataInstruction<
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedUpdateMetadataInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 2) {
-    // TODO: Coded error.
-    throw new Error("Not enough accounts");
+    throw new SolanaError(
+      SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+      {
+        actualAccountMetas: instruction.accounts.length,
+        expectedAccountMetas: 2,
+      },
+    );
   }
   let accountIndex = 0;
   const getNextAccount = () => {

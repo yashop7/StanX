@@ -16,6 +16,8 @@ import {
   getStructEncoder,
   getU32Decoder,
   getU32Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+  SolanaError,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
@@ -32,8 +34,11 @@ import {
   type WritableAccount,
   type WritableSignerAccount,
 } from "@solana/kit";
+import {
+  getAccountMetaFactory,
+  type ResolvedInstructionAccount,
+} from "@solana/program-client-core";
 import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
-import { getAccountMetaFactory, type ResolvedAccount } from "../shared";
 
 export const CLAIM_REWARDS_DISCRIMINATOR = new Uint8Array([
   4, 144, 132, 71, 116, 23, 151, 80,
@@ -204,7 +209,7 @@ export function getClaimRewardsInstruction<
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -219,15 +224,15 @@ export function getClaimRewardsInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.user),
-      getAccountMeta(accounts.market),
-      getAccountMeta(accounts.userCollateral),
-      getAccountMeta(accounts.collateralVault),
-      getAccountMeta(accounts.outcomeYesMint),
-      getAccountMeta(accounts.outcomeNoMint),
-      getAccountMeta(accounts.userOutcomeYes),
-      getAccountMeta(accounts.userOutcomeNo),
-      getAccountMeta(accounts.tokenProgram),
+      getAccountMeta("user", accounts.user),
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("userCollateral", accounts.userCollateral),
+      getAccountMeta("collateralVault", accounts.collateralVault),
+      getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
+      getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
+      getAccountMeta("userOutcomeYes", accounts.userOutcomeYes),
+      getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
+      getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getClaimRewardsInstructionDataEncoder().encode(
       args as ClaimRewardsInstructionDataArgs,
@@ -275,8 +280,13 @@ export function parseClaimRewardsInstruction<
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedClaimRewardsInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 9) {
-    // TODO: Coded error.
-    throw new Error("Not enough accounts");
+    throw new SolanaError(
+      SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+      {
+        actualAccountMetas: instruction.accounts.length,
+        expectedAccountMetas: 9,
+      },
+    );
   }
   let accountIndex = 0;
   const getNextAccount = () => {

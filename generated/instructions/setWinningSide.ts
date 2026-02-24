@@ -16,6 +16,8 @@ import {
   getStructEncoder,
   getU32Decoder,
   getU32Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+  SolanaError,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
@@ -32,8 +34,11 @@ import {
   type WritableAccount,
   type WritableSignerAccount,
 } from "@solana/kit";
+import {
+  getAccountMetaFactory,
+  type ResolvedInstructionAccount,
+} from "@solana/program-client-core";
 import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
-import { getAccountMetaFactory, type ResolvedAccount } from "../shared";
 import {
   getWinningOutcomeDecoder,
   getWinningOutcomeEncoder,
@@ -178,7 +183,7 @@ export function getSetWinningSideInstruction<
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -193,11 +198,11 @@ export function getSetWinningSideInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.authority),
-      getAccountMeta(accounts.market),
-      getAccountMeta(accounts.outcomeYesMint),
-      getAccountMeta(accounts.outcomeNoMint),
-      getAccountMeta(accounts.tokenProgram),
+      getAccountMeta("authority", accounts.authority),
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
+      getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
+      getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getSetWinningSideInstructionDataEncoder().encode(
       args as SetWinningSideInstructionDataArgs,
@@ -237,8 +242,13 @@ export function parseSetWinningSideInstruction<
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedSetWinningSideInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 5) {
-    // TODO: Coded error.
-    throw new Error("Not enough accounts");
+    throw new SolanaError(
+      SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+      {
+        actualAccountMetas: instruction.accounts.length,
+        expectedAccountMetas: 5,
+      },
+    );
   }
   let accountIndex = 0;
   const getNextAccount = () => {

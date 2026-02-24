@@ -20,6 +20,8 @@ import {
   getU32Encoder,
   getU64Decoder,
   getU64Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+  SolanaError,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
@@ -36,13 +38,13 @@ import {
   type WritableAccount,
   type WritableSignerAccount,
 } from "@solana/kit";
-import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
 import {
-  expectAddress,
-  expectSome,
   getAccountMetaFactory,
-  type ResolvedAccount,
-} from "../shared";
+  getAddressFromResolvedInstructionAccount,
+  getNonNullResolvedInstructionInput,
+  type ResolvedInstructionAccount,
+} from "@solana/program-client-core";
+import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
 
 export const SPLIT_TOKENS_DISCRIMINATOR = new Uint8Array([
   79, 195, 116, 0, 140, 176, 73, 179,
@@ -246,7 +248,7 @@ export async function getSplitTokensInstructionAsync<
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -260,8 +262,12 @@ export async function getSplitTokensInstructionAsync<
         getBytesEncoder().encode(
           new Uint8Array([117, 115, 101, 114, 95, 115, 116, 97, 116, 115]),
         ),
-        getU32Encoder().encode(expectSome(args.marketId)),
-        getAddressEncoder().encode(expectAddress(accounts.user.value)),
+        getU32Encoder().encode(
+          getNonNullResolvedInstructionInput("marketId", args.marketId),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount("user", accounts.user.value),
+        ),
       ],
     });
   }
@@ -277,17 +283,17 @@ export async function getSplitTokensInstructionAsync<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.market),
-      getAccountMeta(accounts.user),
-      getAccountMeta(accounts.userCollateral),
-      getAccountMeta(accounts.collateralVault),
-      getAccountMeta(accounts.outcomeYesMint),
-      getAccountMeta(accounts.outcomeNoMint),
-      getAccountMeta(accounts.userOutcomeYes),
-      getAccountMeta(accounts.userOutcomeNo),
-      getAccountMeta(accounts.userStatsAccount),
-      getAccountMeta(accounts.systemProgram),
-      getAccountMeta(accounts.tokenProgram),
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("user", accounts.user),
+      getAccountMeta("userCollateral", accounts.userCollateral),
+      getAccountMeta("collateralVault", accounts.collateralVault),
+      getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
+      getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
+      getAccountMeta("userOutcomeYes", accounts.userOutcomeYes),
+      getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
+      getAccountMeta("userStatsAccount", accounts.userStatsAccount),
+      getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getSplitTokensInstructionDataEncoder().encode(
       args as SplitTokensInstructionDataArgs,
@@ -402,7 +408,7 @@ export function getSplitTokensInstruction<
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -421,17 +427,17 @@ export function getSplitTokensInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.market),
-      getAccountMeta(accounts.user),
-      getAccountMeta(accounts.userCollateral),
-      getAccountMeta(accounts.collateralVault),
-      getAccountMeta(accounts.outcomeYesMint),
-      getAccountMeta(accounts.outcomeNoMint),
-      getAccountMeta(accounts.userOutcomeYes),
-      getAccountMeta(accounts.userOutcomeNo),
-      getAccountMeta(accounts.userStatsAccount),
-      getAccountMeta(accounts.systemProgram),
-      getAccountMeta(accounts.tokenProgram),
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("user", accounts.user),
+      getAccountMeta("userCollateral", accounts.userCollateral),
+      getAccountMeta("collateralVault", accounts.collateralVault),
+      getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
+      getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
+      getAccountMeta("userOutcomeYes", accounts.userOutcomeYes),
+      getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
+      getAccountMeta("userStatsAccount", accounts.userStatsAccount),
+      getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getSplitTokensInstructionDataEncoder().encode(
       args as SplitTokensInstructionDataArgs,
@@ -483,8 +489,13 @@ export function parseSplitTokensInstruction<
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedSplitTokensInstruction<TProgram, TAccountMetas> {
   if (instruction.accounts.length < 11) {
-    // TODO: Coded error.
-    throw new Error("Not enough accounts");
+    throw new SolanaError(
+      SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+      {
+        actualAccountMetas: instruction.accounts.length,
+        expectedAccountMetas: 11,
+      },
+    );
   }
   let accountIndex = 0;
   const getNextAccount = () => {

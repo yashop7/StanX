@@ -10,12 +10,16 @@ import {
   combineCodec,
   fixDecoderSize,
   fixEncoderSize,
+  getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
+  getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
   getU32Decoder,
   getU32Encoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+  SolanaError,
   transformEncoder,
   type AccountMeta,
   type AccountSignerMeta,
@@ -32,8 +36,13 @@ import {
   type WritableAccount,
   type WritableSignerAccount,
 } from "@solana/kit";
+import {
+  getAccountMetaFactory,
+  getAddressFromResolvedInstructionAccount,
+  getNonNullResolvedInstructionInput,
+  type ResolvedInstructionAccount,
+} from "@solana/program-client-core";
 import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
-import { getAccountMetaFactory, type ResolvedAccount } from "../shared";
 
 export const MERGE_TOKENS_DISCRIMINATOR = new Uint8Array([
   226, 89, 251, 121, 225, 130, 180, 14,
@@ -54,6 +63,7 @@ export type MergeTokensInstruction<
   TAccountOutcomeYesMint extends string | AccountMeta<string> = string,
   TAccountOutcomeNoMint extends string | AccountMeta<string> = string,
   TAccountUserOutcomeYes extends string | AccountMeta<string> = string,
+  TAccountUserStatsAccount extends string | AccountMeta<string> = string,
   TAccountUserOutcomeNo extends string | AccountMeta<string> = string,
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -83,6 +93,9 @@ export type MergeTokensInstruction<
       TAccountUserOutcomeYes extends string
         ? WritableAccount<TAccountUserOutcomeYes>
         : TAccountUserOutcomeYes,
+      TAccountUserStatsAccount extends string
+        ? WritableAccount<TAccountUserStatsAccount>
+        : TAccountUserStatsAccount,
       TAccountUserOutcomeNo extends string
         ? WritableAccount<TAccountUserOutcomeNo>
         : TAccountUserOutcomeNo,
@@ -127,7 +140,7 @@ export function getMergeTokensInstructionDataCodec(): FixedSizeCodec<
   );
 }
 
-export type MergeTokensInput<
+export type MergeTokensAsyncInput<
   TAccountMarket extends string = string,
   TAccountUser extends string = string,
   TAccountUserCollateral extends string = string,
@@ -135,6 +148,7 @@ export type MergeTokensInput<
   TAccountOutcomeYesMint extends string = string,
   TAccountOutcomeNoMint extends string = string,
   TAccountUserOutcomeYes extends string = string,
+  TAccountUserStatsAccount extends string = string,
   TAccountUserOutcomeNo extends string = string,
   TAccountTokenProgram extends string = string,
 > = {
@@ -145,6 +159,156 @@ export type MergeTokensInput<
   outcomeYesMint: Address<TAccountOutcomeYesMint>;
   outcomeNoMint: Address<TAccountOutcomeNoMint>;
   userOutcomeYes: Address<TAccountUserOutcomeYes>;
+  userStatsAccount?: Address<TAccountUserStatsAccount>;
+  userOutcomeNo: Address<TAccountUserOutcomeNo>;
+  tokenProgram?: Address<TAccountTokenProgram>;
+  marketId: MergeTokensInstructionDataArgs["marketId"];
+};
+
+export async function getMergeTokensInstructionAsync<
+  TAccountMarket extends string,
+  TAccountUser extends string,
+  TAccountUserCollateral extends string,
+  TAccountCollateralVault extends string,
+  TAccountOutcomeYesMint extends string,
+  TAccountOutcomeNoMint extends string,
+  TAccountUserOutcomeYes extends string,
+  TAccountUserStatsAccount extends string,
+  TAccountUserOutcomeNo extends string,
+  TAccountTokenProgram extends string,
+  TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+>(
+  input: MergeTokensAsyncInput<
+    TAccountMarket,
+    TAccountUser,
+    TAccountUserCollateral,
+    TAccountCollateralVault,
+    TAccountOutcomeYesMint,
+    TAccountOutcomeNoMint,
+    TAccountUserOutcomeYes,
+    TAccountUserStatsAccount,
+    TAccountUserOutcomeNo,
+    TAccountTokenProgram
+  >,
+  config?: { programAddress?: TProgramAddress },
+): Promise<
+  MergeTokensInstruction<
+    TProgramAddress,
+    TAccountMarket,
+    TAccountUser,
+    TAccountUserCollateral,
+    TAccountCollateralVault,
+    TAccountOutcomeYesMint,
+    TAccountOutcomeNoMint,
+    TAccountUserOutcomeYes,
+    TAccountUserStatsAccount,
+    TAccountUserOutcomeNo,
+    TAccountTokenProgram
+  >
+> {
+  // Program address.
+  const programAddress =
+    config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
+
+  // Original accounts.
+  const originalAccounts = {
+    market: { value: input.market ?? null, isWritable: true },
+    user: { value: input.user ?? null, isWritable: true },
+    userCollateral: { value: input.userCollateral ?? null, isWritable: true },
+    collateralVault: { value: input.collateralVault ?? null, isWritable: true },
+    outcomeYesMint: { value: input.outcomeYesMint ?? null, isWritable: true },
+    outcomeNoMint: { value: input.outcomeNoMint ?? null, isWritable: true },
+    userOutcomeYes: { value: input.userOutcomeYes ?? null, isWritable: true },
+    userStatsAccount: {
+      value: input.userStatsAccount ?? null,
+      isWritable: true,
+    },
+    userOutcomeNo: { value: input.userOutcomeNo ?? null, isWritable: true },
+    tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+  };
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedInstructionAccount
+  >;
+
+  // Original args.
+  const args = { ...input };
+
+  // Resolve default values.
+  if (!accounts.userStatsAccount.value) {
+    accounts.userStatsAccount.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([117, 115, 101, 114, 95, 115, 116, 97, 116, 115]),
+        ),
+        getU32Encoder().encode(
+          getNonNullResolvedInstructionInput("marketId", args.marketId),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount("user", accounts.user.value),
+        ),
+      ],
+    });
+  }
+  if (!accounts.tokenProgram.value) {
+    accounts.tokenProgram.value =
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  }
+
+  const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
+  return Object.freeze({
+    accounts: [
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("user", accounts.user),
+      getAccountMeta("userCollateral", accounts.userCollateral),
+      getAccountMeta("collateralVault", accounts.collateralVault),
+      getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
+      getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
+      getAccountMeta("userOutcomeYes", accounts.userOutcomeYes),
+      getAccountMeta("userStatsAccount", accounts.userStatsAccount),
+      getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
+      getAccountMeta("tokenProgram", accounts.tokenProgram),
+    ],
+    data: getMergeTokensInstructionDataEncoder().encode(
+      args as MergeTokensInstructionDataArgs,
+    ),
+    programAddress,
+  } as MergeTokensInstruction<
+    TProgramAddress,
+    TAccountMarket,
+    TAccountUser,
+    TAccountUserCollateral,
+    TAccountCollateralVault,
+    TAccountOutcomeYesMint,
+    TAccountOutcomeNoMint,
+    TAccountUserOutcomeYes,
+    TAccountUserStatsAccount,
+    TAccountUserOutcomeNo,
+    TAccountTokenProgram
+  >);
+}
+
+export type MergeTokensInput<
+  TAccountMarket extends string = string,
+  TAccountUser extends string = string,
+  TAccountUserCollateral extends string = string,
+  TAccountCollateralVault extends string = string,
+  TAccountOutcomeYesMint extends string = string,
+  TAccountOutcomeNoMint extends string = string,
+  TAccountUserOutcomeYes extends string = string,
+  TAccountUserStatsAccount extends string = string,
+  TAccountUserOutcomeNo extends string = string,
+  TAccountTokenProgram extends string = string,
+> = {
+  market: Address<TAccountMarket>;
+  user: TransactionSigner<TAccountUser>;
+  userCollateral: Address<TAccountUserCollateral>;
+  collateralVault: Address<TAccountCollateralVault>;
+  outcomeYesMint: Address<TAccountOutcomeYesMint>;
+  outcomeNoMint: Address<TAccountOutcomeNoMint>;
+  userOutcomeYes: Address<TAccountUserOutcomeYes>;
+  userStatsAccount: Address<TAccountUserStatsAccount>;
   userOutcomeNo: Address<TAccountUserOutcomeNo>;
   tokenProgram?: Address<TAccountTokenProgram>;
   marketId: MergeTokensInstructionDataArgs["marketId"];
@@ -158,6 +322,7 @@ export function getMergeTokensInstruction<
   TAccountOutcomeYesMint extends string,
   TAccountOutcomeNoMint extends string,
   TAccountUserOutcomeYes extends string,
+  TAccountUserStatsAccount extends string,
   TAccountUserOutcomeNo extends string,
   TAccountTokenProgram extends string,
   TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
@@ -170,6 +335,7 @@ export function getMergeTokensInstruction<
     TAccountOutcomeYesMint,
     TAccountOutcomeNoMint,
     TAccountUserOutcomeYes,
+    TAccountUserStatsAccount,
     TAccountUserOutcomeNo,
     TAccountTokenProgram
   >,
@@ -183,6 +349,7 @@ export function getMergeTokensInstruction<
   TAccountOutcomeYesMint,
   TAccountOutcomeNoMint,
   TAccountUserOutcomeYes,
+  TAccountUserStatsAccount,
   TAccountUserOutcomeNo,
   TAccountTokenProgram
 > {
@@ -199,12 +366,16 @@ export function getMergeTokensInstruction<
     outcomeYesMint: { value: input.outcomeYesMint ?? null, isWritable: true },
     outcomeNoMint: { value: input.outcomeNoMint ?? null, isWritable: true },
     userOutcomeYes: { value: input.userOutcomeYes ?? null, isWritable: true },
+    userStatsAccount: {
+      value: input.userStatsAccount ?? null,
+      isWritable: true,
+    },
     userOutcomeNo: { value: input.userOutcomeNo ?? null, isWritable: true },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
-    ResolvedAccount
+    ResolvedInstructionAccount
   >;
 
   // Original args.
@@ -219,15 +390,16 @@ export function getMergeTokensInstruction<
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
-      getAccountMeta(accounts.market),
-      getAccountMeta(accounts.user),
-      getAccountMeta(accounts.userCollateral),
-      getAccountMeta(accounts.collateralVault),
-      getAccountMeta(accounts.outcomeYesMint),
-      getAccountMeta(accounts.outcomeNoMint),
-      getAccountMeta(accounts.userOutcomeYes),
-      getAccountMeta(accounts.userOutcomeNo),
-      getAccountMeta(accounts.tokenProgram),
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("user", accounts.user),
+      getAccountMeta("userCollateral", accounts.userCollateral),
+      getAccountMeta("collateralVault", accounts.collateralVault),
+      getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
+      getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
+      getAccountMeta("userOutcomeYes", accounts.userOutcomeYes),
+      getAccountMeta("userStatsAccount", accounts.userStatsAccount),
+      getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
+      getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getMergeTokensInstructionDataEncoder().encode(
       args as MergeTokensInstructionDataArgs,
@@ -242,6 +414,7 @@ export function getMergeTokensInstruction<
     TAccountOutcomeYesMint,
     TAccountOutcomeNoMint,
     TAccountUserOutcomeYes,
+    TAccountUserStatsAccount,
     TAccountUserOutcomeNo,
     TAccountTokenProgram
   >);
@@ -260,8 +433,9 @@ export type ParsedMergeTokensInstruction<
     outcomeYesMint: TAccountMetas[4];
     outcomeNoMint: TAccountMetas[5];
     userOutcomeYes: TAccountMetas[6];
-    userOutcomeNo: TAccountMetas[7];
-    tokenProgram: TAccountMetas[8];
+    userStatsAccount: TAccountMetas[7];
+    userOutcomeNo: TAccountMetas[8];
+    tokenProgram: TAccountMetas[9];
   };
   data: MergeTokensInstructionData;
 };
@@ -274,9 +448,14 @@ export function parseMergeTokensInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedMergeTokensInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 9) {
-    // TODO: Coded error.
-    throw new Error("Not enough accounts");
+  if (instruction.accounts.length < 10) {
+    throw new SolanaError(
+      SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
+      {
+        actualAccountMetas: instruction.accounts.length,
+        expectedAccountMetas: 10,
+      },
+    );
   }
   let accountIndex = 0;
   const getNextAccount = () => {
@@ -294,6 +473,7 @@ export function parseMergeTokensInstruction<
       outcomeYesMint: getNextAccount(),
       outcomeNoMint: getNextAccount(),
       userOutcomeYes: getNextAccount(),
+      userStatsAccount: getNextAccount(),
       userOutcomeNo: getNextAccount(),
       tokenProgram: getNextAccount(),
     },

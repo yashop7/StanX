@@ -11,12 +11,48 @@ import {
   containsBytes,
   fixEncoderSize,
   getBytesEncoder,
+  SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_ACCOUNT,
+  SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
+  SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
+  SolanaError,
   type Address,
+  type ClientWithRpc,
+  type ClientWithTransactionPlanning,
+  type ClientWithTransactionSending,
+  type GetAccountInfoApi,
+  type GetMultipleAccountsApi,
   type Instruction,
   type InstructionWithData,
   type ReadonlyUint8Array,
 } from "@solana/kit";
 import {
+  addSelfFetchFunctions,
+  addSelfPlanAndSendFunctions,
+  type SelfFetchFunctions,
+  type SelfPlanAndSendFunctions,
+} from "@solana/program-client-core";
+import {
+  getMarketCodec,
+  getOrderBookCodec,
+  getUserStatsCodec,
+  type Market,
+  type MarketArgs,
+  type OrderBook,
+  type OrderBookArgs,
+  type UserStats,
+  type UserStatsArgs,
+} from "../accounts";
+import {
+  getCancelOrderInstructionAsync,
+  getClaimRewardsInstruction,
+  getCloseMarketInstruction,
+  getInitializeMarketInstructionAsync,
+  getMarketOrderInstructionAsync,
+  getMergeTokensInstructionAsync,
+  getPlaceOrderInstructionAsync,
+  getSetWinningSideInstruction,
+  getSplitTokensInstructionAsync,
+  getUpdateMetadataInstruction,
   parseCancelOrderInstruction,
   parseClaimRewardsInstruction,
   parseCloseMarketInstruction,
@@ -27,6 +63,12 @@ import {
   parseSetWinningSideInstruction,
   parseSplitTokensInstruction,
   parseUpdateMetadataInstruction,
+  type CancelOrderAsyncInput,
+  type ClaimRewardsInput,
+  type CloseMarketInput,
+  type InitializeMarketAsyncInput,
+  type MarketOrderAsyncInput,
+  type MergeTokensAsyncInput,
   type ParsedCancelOrderInstruction,
   type ParsedClaimRewardsInstruction,
   type ParsedCloseMarketInstruction,
@@ -37,6 +79,10 @@ import {
   type ParsedSetWinningSideInstruction,
   type ParsedSplitTokensInstruction,
   type ParsedUpdateMetadataInstruction,
+  type PlaceOrderAsyncInput,
+  type SetWinningSideInput,
+  type SplitTokensAsyncInput,
+  type UpdateMetadataInput,
 } from "../instructions";
 
 export const PREDICTION_MARKET_PROGRAM_ADDRESS =
@@ -85,8 +131,9 @@ export function identifyPredictionMarketAccount(
   ) {
     return PredictionMarketAccount.UserStats;
   }
-  throw new Error(
-    "The provided account could not be identified as a predictionMarket account.",
+  throw new SolanaError(
+    SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_ACCOUNT,
+    { accountData: data, programName: "predictionMarket" },
   );
 }
 
@@ -217,8 +264,9 @@ export function identifyPredictionMarketInstruction(
   ) {
     return PredictionMarketInstruction.UpdateMetadata;
   }
-  throw new Error(
-    "The provided instruction could not be identified as a predictionMarket instruction.",
+  throw new SolanaError(
+    SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
+    { instructionData: data, programName: "predictionMarket" },
   );
 }
 
@@ -332,8 +380,140 @@ export function parsePredictionMarketInstruction<TProgram extends string>(
       };
     }
     default:
-      throw new Error(
-        `Unrecognized instruction type: ${instructionType as string}`,
+      throw new SolanaError(
+        SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
+        {
+          instructionType: instructionType as string,
+          programName: "predictionMarket",
+        },
       );
   }
+}
+
+export type PredictionMarketPlugin = {
+  accounts: PredictionMarketPluginAccounts;
+  instructions: PredictionMarketPluginInstructions;
+};
+
+export type PredictionMarketPluginAccounts = {
+  market: ReturnType<typeof getMarketCodec> &
+    SelfFetchFunctions<MarketArgs, Market>;
+  orderBook: ReturnType<typeof getOrderBookCodec> &
+    SelfFetchFunctions<OrderBookArgs, OrderBook>;
+  userStats: ReturnType<typeof getUserStatsCodec> &
+    SelfFetchFunctions<UserStatsArgs, UserStats>;
+};
+
+export type PredictionMarketPluginInstructions = {
+  cancelOrder: (
+    input: CancelOrderAsyncInput,
+  ) => ReturnType<typeof getCancelOrderInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  claimRewards: (
+    input: ClaimRewardsInput,
+  ) => ReturnType<typeof getClaimRewardsInstruction> & SelfPlanAndSendFunctions;
+  closeMarket: (
+    input: CloseMarketInput,
+  ) => ReturnType<typeof getCloseMarketInstruction> & SelfPlanAndSendFunctions;
+  initializeMarket: (
+    input: InitializeMarketAsyncInput,
+  ) => ReturnType<typeof getInitializeMarketInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  marketOrder: (
+    input: MarketOrderAsyncInput,
+  ) => ReturnType<typeof getMarketOrderInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  mergeTokens: (
+    input: MergeTokensAsyncInput,
+  ) => ReturnType<typeof getMergeTokensInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  placeOrder: (
+    input: PlaceOrderAsyncInput,
+  ) => ReturnType<typeof getPlaceOrderInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  setWinningSide: (
+    input: SetWinningSideInput,
+  ) => ReturnType<typeof getSetWinningSideInstruction> &
+    SelfPlanAndSendFunctions;
+  splitTokens: (
+    input: SplitTokensAsyncInput,
+  ) => ReturnType<typeof getSplitTokensInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  updateMetadata: (
+    input: UpdateMetadataInput,
+  ) => ReturnType<typeof getUpdateMetadataInstruction> &
+    SelfPlanAndSendFunctions;
+};
+
+export type PredictionMarketPluginRequirements = ClientWithRpc<
+  GetAccountInfoApi & GetMultipleAccountsApi
+> &
+  ClientWithTransactionPlanning &
+  ClientWithTransactionSending;
+
+export function predictionMarketProgram() {
+  return <T extends PredictionMarketPluginRequirements>(client: T) => {
+    return {
+      ...client,
+      predictionMarket: <PredictionMarketPlugin>{
+        accounts: {
+          market: addSelfFetchFunctions(client, getMarketCodec()),
+          orderBook: addSelfFetchFunctions(client, getOrderBookCodec()),
+          userStats: addSelfFetchFunctions(client, getUserStatsCodec()),
+        },
+        instructions: {
+          cancelOrder: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getCancelOrderInstructionAsync(input),
+            ),
+          claimRewards: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getClaimRewardsInstruction(input),
+            ),
+          closeMarket: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getCloseMarketInstruction(input),
+            ),
+          initializeMarket: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getInitializeMarketInstructionAsync(input),
+            ),
+          marketOrder: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getMarketOrderInstructionAsync(input),
+            ),
+          mergeTokens: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getMergeTokensInstructionAsync(input),
+            ),
+          placeOrder: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getPlaceOrderInstructionAsync(input),
+            ),
+          setWinningSide: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSetWinningSideInstruction(input),
+            ),
+          splitTokens: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getSplitTokensInstructionAsync(input),
+            ),
+          updateMetadata: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getUpdateMetadataInstruction(input),
+            ),
+        },
+      },
+    };
+  };
 }
