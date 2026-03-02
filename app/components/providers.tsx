@@ -2,6 +2,8 @@
 
 import { SolanaProvider } from "@solana/react-hooks";
 import { PropsWithChildren } from "react";
+import { ThemeProvider } from "next-themes";
+import { Toaster } from "sonner";
 
 import { autoDiscover, createClient } from "@solana/client";
 
@@ -11,5 +13,17 @@ const client = createClient({
 });
 
 export function Providers({ children }: PropsWithChildren) {
-  return <SolanaProvider client={client}>{children}</SolanaProvider>;
+  return (
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
+      <SolanaProvider client={client}>
+        {children}
+        <Toaster position="bottom-right" richColors closeButton />
+      </SolanaProvider>
+    </ThemeProvider>
+  );
 }

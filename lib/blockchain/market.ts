@@ -30,10 +30,11 @@ import {
 
 // Codama-generated instruction builder for initialize_market
 import { getInitializeMarketInstructionAsync } from "@/generated/instructions/initializeMarket";
-import { 
-  fetchMarket, 
-  type Market, 
-  MARKET_DISCRIMINATOR 
+import {
+  fetchMarket,
+  fetchAllMaybeMarket,
+  type Market,
+  MARKET_DISCRIMINATOR,
 } from "@/generated/accounts/market";
 import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "@/generated/programs";
 
@@ -41,7 +42,10 @@ import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "@/generated/programs";
 import { rpc, rpcSubscriptions } from "./client";
 
 // Pre-built sender — factory is called once at module level
-const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({ rpc, rpcSubscriptions });
+const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({
+  rpc,
+  rpcSubscriptions,
+});
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -101,9 +105,15 @@ export interface InitializeMarketResult {
  * ```
  */
 export async function initializeMarket(
-  params: InitializeMarketParams,
+  params: InitializeMarketParams
 ): Promise<InitializeMarketResult> {
-  const { authority, collateralMint, marketId, settlementDeadline, metadataUrl } = params;
+  const {
+    authority,
+    collateralMint,
+    marketId,
+    settlementDeadline,
+    metadataUrl,
+  } = params;
 
   // ── Step 1: Build the instruction ──────────────────────────────────────────
   //
@@ -113,11 +123,11 @@ export async function initializeMarket(
   // We only pass the things WE know. Everything else (PDAs, default programs)
   // is resolved by the generated function automatically.
   const instruction = await getInitializeMarketInstructionAsync({
-    authority,          // signer — will be set as writable + signer account meta
-    collateralMint,     // the mint address we provide
-    marketId,           // u32 — used to derive all PDAs
+    authority, // signer — will be set as writable + signer account meta
+    collateralMint, // the mint address we provide
+    marketId, // u32 — used to derive all PDAs
     settlementDeadline, // i64 as bigint
-    metadataUrl
+    metadataUrl,
     // market, collateralVault, outcomeYesMint, outcomeNoMint,
     // yesEscrow, noEscrow, orderbook → all auto-derived from marketId ✅
     // systemProgram, tokenProgram, rent → all defaulted ✅
@@ -146,7 +156,7 @@ export async function initializeMarket(
     (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
 
     // Attach our initialize_market instruction
-    (tx) => appendTransactionMessageInstruction(instruction, tx),
+    (tx) => appendTransactionMessageInstruction(instruction, tx)
   );
 
   // ── Step 4: Sign the transaction ───────────────────────────────────────────
@@ -161,9 +171,12 @@ export async function initializeMarket(
   //
   // Sends the transaction and WAITS until it is finalized on-chain
   // (or throws if it fails / times out).
-  await sendAndConfirmTransaction(signedTransaction as Parameters<typeof sendAndConfirmTransaction>[0], {
-    commitment: "confirmed",
-  });
+  await sendAndConfirmTransaction(
+    signedTransaction as Parameters<typeof sendAndConfirmTransaction>[0],
+    {
+      commitment: "confirmed",
+    }
+  );
 
   // ── Return the signature ──────────────────────────────────────────────────
   const signature = getSignatureFromTransaction(signedTransaction);
@@ -175,12 +188,13 @@ export async function initializeMarket(
 
 /**
  * Fetches all market accounts from the blockchain.
- * 
- * Uses getProgramAccounts to find all accounts owned by the prediction market
- * program that start with the Market discriminator.
- * 
+ *
+ * Two-step process:
+ *   1. Use getProgramAccounts to DISCOVER all market addresses (with discriminator filter)
+ *   2. Use fetchAllMaybeMarket to FETCH all markets in a single batched call
+ *
  * @returns Array of all market accounts with their addresses
- * 
+ *
  * @example
  * ```ts
  * const markets = await getAllMarkets();
@@ -188,10 +202,13 @@ export async function initializeMarket(
  * markets.forEach(m => console.log(`Market ${m.data.marketId}: ${m.address}`));
  * ```
  */
-export async function getAllMarkets(): Promise<Array<{ address: Address; data: Market }>> {
+export async function getAllMarkets(): Promise<
+  Array<{ address: Address; data: Market }>
+> {
   try {
-    // Use getProgramAccounts to fetch all accounts owned by the program
-    // that match the Market discriminator
+    // ── Step 1: Discover all market addresses ───────────────────────────────
+    // getProgramAccounts finds ALL accounts owned by our program
+    // that start with the Market discriminator (first 8 bytes)
     const response = await rpc
       .getProgramAccounts(PREDICTION_MARKET_PROGRAM_ADDRESS, {
         encoding: "base64",
@@ -199,7 +216,9 @@ export async function getAllMarkets(): Promise<Array<{ address: Address; data: M
           {
             memcmp: {
               offset: BigInt(0),
-              bytes: Buffer.from(MARKET_DISCRIMINATOR).toString("base64") as any,
+              bytes: Buffer.from(MARKET_DISCRIMINATOR).toString(
+                "base64"
+              ) as any,
               encoding: "base64",
             },
           },
@@ -207,16 +226,28 @@ export async function getAllMarkets(): Promise<Array<{ address: Address; data: M
       })
       .send();
 
-    // Fetch and decode each market account
-    const markets = await Promise.all(
-      response.map(async (account: any) => {
-        const marketData = await fetchMarket(rpc, account.pubkey);
+    // Extract just the addresses
+    const addresses = response.map((account: any) => account.pubkey);
+
+    if (addresses.length === 0) {
+      return [];
+    }
+
+    // ── Step 2: Fetch all markets in one batched call ──────────────────────
+    // fetchAllMaybeMarket sends a SINGLE RPC call (getMultipleAccounts)
+    // instead of N individual calls. Much more efficient!
+    const marketAccounts = await fetchAllMaybeMarket(rpc, addresses);
+
+    // Filter out any null accounts and map to our return format
+    const markets = marketAccounts
+      .map((maybeAccount, index) => {
+        if (!maybeAccount.exists) return null;
         return {
-          address: account.pubkey,
-          data: marketData.data,
+          address: addresses[index],
+          data: maybeAccount.data,
         };
       })
-    );
+      .filter((m): m is { address: Address; data: Market } => m !== null);
 
     return markets;
   } catch (error) {
