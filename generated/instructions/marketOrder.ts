@@ -44,7 +44,7 @@ import {
   getNonNullResolvedInstructionInput,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
+import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "../programs";
 import {
   getOrderSideDecoder,
   getOrderSideEncoder,
@@ -67,19 +67,23 @@ export function getMarketOrderDiscriminatorBytes() {
 }
 
 export type MarketOrderInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountUser extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
   TAccountOrderbook extends string | AccountMeta<string> = string,
   TAccountCollateralVault extends string | AccountMeta<string> = string,
   TAccountUserCollateral extends string | AccountMeta<string> = string,
   TAccountUserStatsAccount extends string | AccountMeta<string> = string,
+  TAccountOutcomeYesMint extends string | AccountMeta<string> = string,
+  TAccountOutcomeNoMint extends string | AccountMeta<string> = string,
   TAccountUserOutcomeYes extends string | AccountMeta<string> = string,
   TAccountUserOutcomeNo extends string | AccountMeta<string> = string,
   TAccountYesEscrow extends string | AccountMeta<string> = string,
   TAccountNoEscrow extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
+  TAccountAssociatedTokenProgram extends string | AccountMeta<string> =
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -105,6 +109,12 @@ export type MarketOrderInstruction<
       TAccountUserStatsAccount extends string
         ? WritableAccount<TAccountUserStatsAccount>
         : TAccountUserStatsAccount,
+      TAccountOutcomeYesMint extends string
+        ? ReadonlyAccount<TAccountOutcomeYesMint>
+        : TAccountOutcomeYesMint,
+      TAccountOutcomeNoMint extends string
+        ? ReadonlyAccount<TAccountOutcomeNoMint>
+        : TAccountOutcomeNoMint,
       TAccountUserOutcomeYes extends string
         ? WritableAccount<TAccountUserOutcomeYes>
         : TAccountUserOutcomeYes,
@@ -120,6 +130,9 @@ export type MarketOrderInstruction<
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
+      TAccountAssociatedTokenProgram extends string
+        ? ReadonlyAccount<TAccountAssociatedTokenProgram>
+        : TAccountAssociatedTokenProgram,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
@@ -186,11 +199,14 @@ export type MarketOrderAsyncInput<
   TAccountCollateralVault extends string = string,
   TAccountUserCollateral extends string = string,
   TAccountUserStatsAccount extends string = string,
+  TAccountOutcomeYesMint extends string = string,
+  TAccountOutcomeNoMint extends string = string,
   TAccountUserOutcomeYes extends string = string,
   TAccountUserOutcomeNo extends string = string,
   TAccountYesEscrow extends string = string,
   TAccountNoEscrow extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountTokenProgram extends string = string,
 > = {
   user: TransactionSigner<TAccountUser>;
@@ -199,11 +215,14 @@ export type MarketOrderAsyncInput<
   collateralVault: Address<TAccountCollateralVault>;
   userCollateral: Address<TAccountUserCollateral>;
   userStatsAccount?: Address<TAccountUserStatsAccount>;
-  userOutcomeYes: Address<TAccountUserOutcomeYes>;
-  userOutcomeNo: Address<TAccountUserOutcomeNo>;
+  outcomeYesMint: Address<TAccountOutcomeYesMint>;
+  outcomeNoMint: Address<TAccountOutcomeNoMint>;
+  userOutcomeYes?: Address<TAccountUserOutcomeYes>;
+  userOutcomeNo?: Address<TAccountUserOutcomeNo>;
   yesEscrow: Address<TAccountYesEscrow>;
   noEscrow: Address<TAccountNoEscrow>;
   systemProgram?: Address<TAccountSystemProgram>;
+  associatedTokenProgram?: Address<TAccountAssociatedTokenProgram>;
   tokenProgram?: Address<TAccountTokenProgram>;
   marketId: MarketOrderInstructionDataArgs["marketId"];
   side: MarketOrderInstructionDataArgs["side"];
@@ -219,13 +238,17 @@ export async function getMarketOrderInstructionAsync<
   TAccountCollateralVault extends string,
   TAccountUserCollateral extends string,
   TAccountUserStatsAccount extends string,
+  TAccountOutcomeYesMint extends string,
+  TAccountOutcomeNoMint extends string,
   TAccountUserOutcomeYes extends string,
   TAccountUserOutcomeNo extends string,
   TAccountYesEscrow extends string,
   TAccountNoEscrow extends string,
   TAccountSystemProgram extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountTokenProgram extends string,
-  TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgramAddress extends Address =
+    typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
 >(
   input: MarketOrderAsyncInput<
     TAccountUser,
@@ -234,11 +257,14 @@ export async function getMarketOrderInstructionAsync<
     TAccountCollateralVault,
     TAccountUserCollateral,
     TAccountUserStatsAccount,
+    TAccountOutcomeYesMint,
+    TAccountOutcomeNoMint,
     TAccountUserOutcomeYes,
     TAccountUserOutcomeNo,
     TAccountYesEscrow,
     TAccountNoEscrow,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -251,17 +277,20 @@ export async function getMarketOrderInstructionAsync<
     TAccountCollateralVault,
     TAccountUserCollateral,
     TAccountUserStatsAccount,
+    TAccountOutcomeYesMint,
+    TAccountOutcomeNoMint,
     TAccountUserOutcomeYes,
     TAccountUserOutcomeNo,
     TAccountYesEscrow,
     TAccountNoEscrow,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >
 > {
   // Program address.
   const programAddress =
-    config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
+    config?.programAddress ?? PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -274,11 +303,17 @@ export async function getMarketOrderInstructionAsync<
       value: input.userStatsAccount ?? null,
       isWritable: true,
     },
+    outcomeYesMint: { value: input.outcomeYesMint ?? null, isWritable: false },
+    outcomeNoMint: { value: input.outcomeNoMint ?? null, isWritable: false },
     userOutcomeYes: { value: input.userOutcomeYes ?? null, isWritable: true },
     userOutcomeNo: { value: input.userOutcomeNo ?? null, isWritable: true },
     yesEscrow: { value: input.yesEscrow ?? null, isWritable: true },
     noEscrow: { value: input.noEscrow ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -306,13 +341,63 @@ export async function getMarketOrderInstructionAsync<
       ],
     });
   }
+  if (!accounts.tokenProgram.value) {
+    accounts.tokenProgram.value =
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  }
+  if (!accounts.userOutcomeYes.value) {
+    accounts.userOutcomeYes.value = await getProgramDerivedAddress({
+      programAddress:
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">,
+      seeds: [
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount("user", accounts.user.value),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "tokenProgram",
+            accounts.tokenProgram.value,
+          ),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "outcomeYesMint",
+            accounts.outcomeYesMint.value,
+          ),
+        ),
+      ],
+    });
+  }
+  if (!accounts.userOutcomeNo.value) {
+    accounts.userOutcomeNo.value = await getProgramDerivedAddress({
+      programAddress:
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">,
+      seeds: [
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount("user", accounts.user.value),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "tokenProgram",
+            accounts.tokenProgram.value,
+          ),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "outcomeNoMint",
+            accounts.outcomeNoMint.value,
+          ),
+        ),
+      ],
+    });
+  }
   if (!accounts.systemProgram.value) {
     accounts.systemProgram.value =
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
   }
-  if (!accounts.tokenProgram.value) {
-    accounts.tokenProgram.value =
-      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  if (!accounts.associatedTokenProgram.value) {
+    accounts.associatedTokenProgram.value =
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">;
   }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
@@ -324,11 +409,14 @@ export async function getMarketOrderInstructionAsync<
       getAccountMeta("collateralVault", accounts.collateralVault),
       getAccountMeta("userCollateral", accounts.userCollateral),
       getAccountMeta("userStatsAccount", accounts.userStatsAccount),
+      getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
+      getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
       getAccountMeta("userOutcomeYes", accounts.userOutcomeYes),
       getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
       getAccountMeta("yesEscrow", accounts.yesEscrow),
       getAccountMeta("noEscrow", accounts.noEscrow),
       getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("associatedTokenProgram", accounts.associatedTokenProgram),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getMarketOrderInstructionDataEncoder().encode(
@@ -343,11 +431,14 @@ export async function getMarketOrderInstructionAsync<
     TAccountCollateralVault,
     TAccountUserCollateral,
     TAccountUserStatsAccount,
+    TAccountOutcomeYesMint,
+    TAccountOutcomeNoMint,
     TAccountUserOutcomeYes,
     TAccountUserOutcomeNo,
     TAccountYesEscrow,
     TAccountNoEscrow,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >);
 }
@@ -359,11 +450,14 @@ export type MarketOrderInput<
   TAccountCollateralVault extends string = string,
   TAccountUserCollateral extends string = string,
   TAccountUserStatsAccount extends string = string,
+  TAccountOutcomeYesMint extends string = string,
+  TAccountOutcomeNoMint extends string = string,
   TAccountUserOutcomeYes extends string = string,
   TAccountUserOutcomeNo extends string = string,
   TAccountYesEscrow extends string = string,
   TAccountNoEscrow extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountTokenProgram extends string = string,
 > = {
   user: TransactionSigner<TAccountUser>;
@@ -372,11 +466,14 @@ export type MarketOrderInput<
   collateralVault: Address<TAccountCollateralVault>;
   userCollateral: Address<TAccountUserCollateral>;
   userStatsAccount: Address<TAccountUserStatsAccount>;
+  outcomeYesMint: Address<TAccountOutcomeYesMint>;
+  outcomeNoMint: Address<TAccountOutcomeNoMint>;
   userOutcomeYes: Address<TAccountUserOutcomeYes>;
   userOutcomeNo: Address<TAccountUserOutcomeNo>;
   yesEscrow: Address<TAccountYesEscrow>;
   noEscrow: Address<TAccountNoEscrow>;
   systemProgram?: Address<TAccountSystemProgram>;
+  associatedTokenProgram?: Address<TAccountAssociatedTokenProgram>;
   tokenProgram?: Address<TAccountTokenProgram>;
   marketId: MarketOrderInstructionDataArgs["marketId"];
   side: MarketOrderInstructionDataArgs["side"];
@@ -392,13 +489,17 @@ export function getMarketOrderInstruction<
   TAccountCollateralVault extends string,
   TAccountUserCollateral extends string,
   TAccountUserStatsAccount extends string,
+  TAccountOutcomeYesMint extends string,
+  TAccountOutcomeNoMint extends string,
   TAccountUserOutcomeYes extends string,
   TAccountUserOutcomeNo extends string,
   TAccountYesEscrow extends string,
   TAccountNoEscrow extends string,
   TAccountSystemProgram extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountTokenProgram extends string,
-  TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgramAddress extends Address =
+    typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
 >(
   input: MarketOrderInput<
     TAccountUser,
@@ -407,11 +508,14 @@ export function getMarketOrderInstruction<
     TAccountCollateralVault,
     TAccountUserCollateral,
     TAccountUserStatsAccount,
+    TAccountOutcomeYesMint,
+    TAccountOutcomeNoMint,
     TAccountUserOutcomeYes,
     TAccountUserOutcomeNo,
     TAccountYesEscrow,
     TAccountNoEscrow,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -423,16 +527,19 @@ export function getMarketOrderInstruction<
   TAccountCollateralVault,
   TAccountUserCollateral,
   TAccountUserStatsAccount,
+  TAccountOutcomeYesMint,
+  TAccountOutcomeNoMint,
   TAccountUserOutcomeYes,
   TAccountUserOutcomeNo,
   TAccountYesEscrow,
   TAccountNoEscrow,
   TAccountSystemProgram,
+  TAccountAssociatedTokenProgram,
   TAccountTokenProgram
 > {
   // Program address.
   const programAddress =
-    config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
+    config?.programAddress ?? PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -445,11 +552,17 @@ export function getMarketOrderInstruction<
       value: input.userStatsAccount ?? null,
       isWritable: true,
     },
+    outcomeYesMint: { value: input.outcomeYesMint ?? null, isWritable: false },
+    outcomeNoMint: { value: input.outcomeNoMint ?? null, isWritable: false },
     userOutcomeYes: { value: input.userOutcomeYes ?? null, isWritable: true },
     userOutcomeNo: { value: input.userOutcomeNo ?? null, isWritable: true },
     yesEscrow: { value: input.yesEscrow ?? null, isWritable: true },
     noEscrow: { value: input.noEscrow ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -461,13 +574,17 @@ export function getMarketOrderInstruction<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.tokenProgram.value) {
+    accounts.tokenProgram.value =
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  }
   if (!accounts.systemProgram.value) {
     accounts.systemProgram.value =
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
   }
-  if (!accounts.tokenProgram.value) {
-    accounts.tokenProgram.value =
-      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  if (!accounts.associatedTokenProgram.value) {
+    accounts.associatedTokenProgram.value =
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">;
   }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
@@ -479,11 +596,14 @@ export function getMarketOrderInstruction<
       getAccountMeta("collateralVault", accounts.collateralVault),
       getAccountMeta("userCollateral", accounts.userCollateral),
       getAccountMeta("userStatsAccount", accounts.userStatsAccount),
+      getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
+      getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
       getAccountMeta("userOutcomeYes", accounts.userOutcomeYes),
       getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
       getAccountMeta("yesEscrow", accounts.yesEscrow),
       getAccountMeta("noEscrow", accounts.noEscrow),
       getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("associatedTokenProgram", accounts.associatedTokenProgram),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getMarketOrderInstructionDataEncoder().encode(
@@ -498,17 +618,20 @@ export function getMarketOrderInstruction<
     TAccountCollateralVault,
     TAccountUserCollateral,
     TAccountUserStatsAccount,
+    TAccountOutcomeYesMint,
+    TAccountOutcomeNoMint,
     TAccountUserOutcomeYes,
     TAccountUserOutcomeNo,
     TAccountYesEscrow,
     TAccountNoEscrow,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >);
 }
 
 export type ParsedMarketOrderInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
@@ -519,12 +642,15 @@ export type ParsedMarketOrderInstruction<
     collateralVault: TAccountMetas[3];
     userCollateral: TAccountMetas[4];
     userStatsAccount: TAccountMetas[5];
-    userOutcomeYes: TAccountMetas[6];
-    userOutcomeNo: TAccountMetas[7];
-    yesEscrow: TAccountMetas[8];
-    noEscrow: TAccountMetas[9];
-    systemProgram: TAccountMetas[10];
-    tokenProgram: TAccountMetas[11];
+    outcomeYesMint: TAccountMetas[6];
+    outcomeNoMint: TAccountMetas[7];
+    userOutcomeYes: TAccountMetas[8];
+    userOutcomeNo: TAccountMetas[9];
+    yesEscrow: TAccountMetas[10];
+    noEscrow: TAccountMetas[11];
+    systemProgram: TAccountMetas[12];
+    associatedTokenProgram: TAccountMetas[13];
+    tokenProgram: TAccountMetas[14];
   };
   data: MarketOrderInstructionData;
 };
@@ -537,12 +663,12 @@ export function parseMarketOrderInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedMarketOrderInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 12) {
+  if (instruction.accounts.length < 15) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 12,
+        expectedAccountMetas: 15,
       },
     );
   }
@@ -561,11 +687,14 @@ export function parseMarketOrderInstruction<
       collateralVault: getNextAccount(),
       userCollateral: getNextAccount(),
       userStatsAccount: getNextAccount(),
+      outcomeYesMint: getNextAccount(),
+      outcomeNoMint: getNextAccount(),
       userOutcomeYes: getNextAccount(),
       userOutcomeNo: getNextAccount(),
       yesEscrow: getNextAccount(),
       noEscrow: getNextAccount(),
       systemProgram: getNextAccount(),
+      associatedTokenProgram: getNextAccount(),
       tokenProgram: getNextAccount(),
     },
     data: getMarketOrderInstructionDataDecoder().decode(instruction.data),

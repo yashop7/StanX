@@ -38,7 +38,7 @@ import {
   getAccountMetaFactory,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
+import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "../programs";
 import {
   getWinningOutcomeDecoder,
   getWinningOutcomeEncoder,
@@ -46,22 +46,22 @@ import {
   type WinningOutcomeArgs,
 } from "../types";
 
-export const SET_WINNING_SIDE_DISCRIMINATOR = new Uint8Array([
-  228, 154, 61, 145, 237, 24, 26, 15,
+export const SET_WINNER_DISCRIMINATOR = new Uint8Array([
+  207, 149, 39, 13, 31, 233, 182, 109,
 ]);
 
-export function getSetWinningSideDiscriminatorBytes() {
-  return fixEncoderSize(getBytesEncoder(), 8).encode(
-    SET_WINNING_SIDE_DISCRIMINATOR,
-  );
+export function getSetWinnerDiscriminatorBytes() {
+  return fixEncoderSize(getBytesEncoder(), 8).encode(SET_WINNER_DISCRIMINATOR);
 }
 
-export type SetWinningSideInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+export type SetWinnerInstruction<
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountAuthority extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
   TAccountOutcomeYesMint extends string | AccountMeta<string> = string,
   TAccountOutcomeNoMint extends string | AccountMeta<string> = string,
+  TAccountAssociatedTokenProgram extends string | AccountMeta<string> =
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -82,6 +82,9 @@ export type SetWinningSideInstruction<
       TAccountOutcomeNoMint extends string
         ? WritableAccount<TAccountOutcomeNoMint>
         : TAccountOutcomeNoMint,
+      TAccountAssociatedTokenProgram extends string
+        ? ReadonlyAccount<TAccountAssociatedTokenProgram>
+        : TAccountAssociatedTokenProgram,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
@@ -89,29 +92,29 @@ export type SetWinningSideInstruction<
     ]
   >;
 
-export type SetWinningSideInstructionData = {
+export type SetWinnerInstructionData = {
   discriminator: ReadonlyUint8Array;
   marketId: number;
   winningOutcome: WinningOutcome;
 };
 
-export type SetWinningSideInstructionDataArgs = {
+export type SetWinnerInstructionDataArgs = {
   marketId: number;
   winningOutcome: WinningOutcomeArgs;
 };
 
-export function getSetWinningSideInstructionDataEncoder(): FixedSizeEncoder<SetWinningSideInstructionDataArgs> {
+export function getSetWinnerInstructionDataEncoder(): FixedSizeEncoder<SetWinnerInstructionDataArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
       ["marketId", getU32Encoder()],
       ["winningOutcome", getWinningOutcomeEncoder()],
     ]),
-    (value) => ({ ...value, discriminator: SET_WINNING_SIDE_DISCRIMINATOR }),
+    (value) => ({ ...value, discriminator: SET_WINNER_DISCRIMINATOR }),
   );
 }
 
-export function getSetWinningSideInstructionDataDecoder(): FixedSizeDecoder<SetWinningSideInstructionData> {
+export function getSetWinnerInstructionDataDecoder(): FixedSizeDecoder<SetWinnerInstructionData> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["marketId", getU32Decoder()],
@@ -119,59 +122,65 @@ export function getSetWinningSideInstructionDataDecoder(): FixedSizeDecoder<SetW
   ]);
 }
 
-export function getSetWinningSideInstructionDataCodec(): FixedSizeCodec<
-  SetWinningSideInstructionDataArgs,
-  SetWinningSideInstructionData
+export function getSetWinnerInstructionDataCodec(): FixedSizeCodec<
+  SetWinnerInstructionDataArgs,
+  SetWinnerInstructionData
 > {
   return combineCodec(
-    getSetWinningSideInstructionDataEncoder(),
-    getSetWinningSideInstructionDataDecoder(),
+    getSetWinnerInstructionDataEncoder(),
+    getSetWinnerInstructionDataDecoder(),
   );
 }
 
-export type SetWinningSideInput<
+export type SetWinnerInput<
   TAccountAuthority extends string = string,
   TAccountMarket extends string = string,
   TAccountOutcomeYesMint extends string = string,
   TAccountOutcomeNoMint extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountTokenProgram extends string = string,
 > = {
   authority: TransactionSigner<TAccountAuthority>;
   market: Address<TAccountMarket>;
   outcomeYesMint: Address<TAccountOutcomeYesMint>;
   outcomeNoMint: Address<TAccountOutcomeNoMint>;
+  associatedTokenProgram?: Address<TAccountAssociatedTokenProgram>;
   tokenProgram?: Address<TAccountTokenProgram>;
-  marketId: SetWinningSideInstructionDataArgs["marketId"];
-  winningOutcome: SetWinningSideInstructionDataArgs["winningOutcome"];
+  marketId: SetWinnerInstructionDataArgs["marketId"];
+  winningOutcome: SetWinnerInstructionDataArgs["winningOutcome"];
 };
 
-export function getSetWinningSideInstruction<
+export function getSetWinnerInstruction<
   TAccountAuthority extends string,
   TAccountMarket extends string,
   TAccountOutcomeYesMint extends string,
   TAccountOutcomeNoMint extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountTokenProgram extends string,
-  TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgramAddress extends Address =
+    typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
 >(
-  input: SetWinningSideInput<
+  input: SetWinnerInput<
     TAccountAuthority,
     TAccountMarket,
     TAccountOutcomeYesMint,
     TAccountOutcomeNoMint,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >,
   config?: { programAddress?: TProgramAddress },
-): SetWinningSideInstruction<
+): SetWinnerInstruction<
   TProgramAddress,
   TAccountAuthority,
   TAccountMarket,
   TAccountOutcomeYesMint,
   TAccountOutcomeNoMint,
+  TAccountAssociatedTokenProgram,
   TAccountTokenProgram
 > {
   // Program address.
   const programAddress =
-    config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
+    config?.programAddress ?? PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -179,6 +188,10 @@ export function getSetWinningSideInstruction<
     market: { value: input.market ?? null, isWritable: true },
     outcomeYesMint: { value: input.outcomeYesMint ?? null, isWritable: true },
     outcomeNoMint: { value: input.outcomeNoMint ?? null, isWritable: true },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -190,6 +203,10 @@ export function getSetWinningSideInstruction<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.associatedTokenProgram.value) {
+    accounts.associatedTokenProgram.value =
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">;
+  }
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
@@ -202,24 +219,26 @@ export function getSetWinningSideInstruction<
       getAccountMeta("market", accounts.market),
       getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
       getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
+      getAccountMeta("associatedTokenProgram", accounts.associatedTokenProgram),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
-    data: getSetWinningSideInstructionDataEncoder().encode(
-      args as SetWinningSideInstructionDataArgs,
+    data: getSetWinnerInstructionDataEncoder().encode(
+      args as SetWinnerInstructionDataArgs,
     ),
     programAddress,
-  } as SetWinningSideInstruction<
+  } as SetWinnerInstruction<
     TProgramAddress,
     TAccountAuthority,
     TAccountMarket,
     TAccountOutcomeYesMint,
     TAccountOutcomeNoMint,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >);
 }
 
-export type ParsedSetWinningSideInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+export type ParsedSetWinnerInstruction<
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
@@ -228,25 +247,26 @@ export type ParsedSetWinningSideInstruction<
     market: TAccountMetas[1];
     outcomeYesMint: TAccountMetas[2];
     outcomeNoMint: TAccountMetas[3];
-    tokenProgram: TAccountMetas[4];
+    associatedTokenProgram: TAccountMetas[4];
+    tokenProgram: TAccountMetas[5];
   };
-  data: SetWinningSideInstructionData;
+  data: SetWinnerInstructionData;
 };
 
-export function parseSetWinningSideInstruction<
+export function parseSetWinnerInstruction<
   TProgram extends string,
   TAccountMetas extends readonly AccountMeta[],
 >(
   instruction: Instruction<TProgram> &
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
-): ParsedSetWinningSideInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 5) {
+): ParsedSetWinnerInstruction<TProgram, TAccountMetas> {
+  if (instruction.accounts.length < 6) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 5,
+        expectedAccountMetas: 6,
       },
     );
   }
@@ -263,8 +283,9 @@ export function parseSetWinningSideInstruction<
       market: getNextAccount(),
       outcomeYesMint: getNextAccount(),
       outcomeNoMint: getNextAccount(),
+      associatedTokenProgram: getNextAccount(),
       tokenProgram: getNextAccount(),
     },
-    data: getSetWinningSideInstructionDataDecoder().decode(instruction.data),
+    data: getSetWinnerInstructionDataDecoder().decode(instruction.data),
   };
 }

@@ -10,8 +10,10 @@ import {
   combineCodec,
   fixDecoderSize,
   fixEncoderSize,
+  getAddressEncoder,
   getBytesDecoder,
   getBytesEncoder,
+  getProgramDerivedAddress,
   getStructDecoder,
   getStructEncoder,
   getU32Decoder,
@@ -36,9 +38,11 @@ import {
 } from "@solana/kit";
 import {
   getAccountMetaFactory,
+  getAddressFromResolvedInstructionAccount,
+  getNonNullResolvedInstructionInput,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
+import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "../programs";
 
 export const CLAIM_REWARDS_DISCRIMINATOR = new Uint8Array([
   4, 144, 132, 71, 116, 23, 151, 80,
@@ -51,17 +55,23 @@ export function getClaimRewardsDiscriminatorBytes() {
 }
 
 export type ClaimRewardsInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountUser extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
+  TAccountUserStats extends string | AccountMeta<string> = string,
+  TAccountCollateralMint extends string | AccountMeta<string> = string,
   TAccountUserCollateral extends string | AccountMeta<string> = string,
   TAccountCollateralVault extends string | AccountMeta<string> = string,
   TAccountOutcomeYesMint extends string | AccountMeta<string> = string,
   TAccountOutcomeNoMint extends string | AccountMeta<string> = string,
   TAccountUserOutcomeYes extends string | AccountMeta<string> = string,
   TAccountUserOutcomeNo extends string | AccountMeta<string> = string,
+  TAccountAssociatedTokenProgram extends string | AccountMeta<string> =
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  TAccountSystemProgram extends string | AccountMeta<string> =
+    "11111111111111111111111111111111",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
 > = Instruction<TProgram> &
   InstructionWithData<ReadonlyUint8Array> &
@@ -73,6 +83,12 @@ export type ClaimRewardsInstruction<
       TAccountMarket extends string
         ? WritableAccount<TAccountMarket>
         : TAccountMarket,
+      TAccountUserStats extends string
+        ? WritableAccount<TAccountUserStats>
+        : TAccountUserStats,
+      TAccountCollateralMint extends string
+        ? ReadonlyAccount<TAccountCollateralMint>
+        : TAccountCollateralMint,
       TAccountUserCollateral extends string
         ? WritableAccount<TAccountUserCollateral>
         : TAccountUserCollateral,
@@ -91,9 +107,15 @@ export type ClaimRewardsInstruction<
       TAccountUserOutcomeNo extends string
         ? WritableAccount<TAccountUserOutcomeNo>
         : TAccountUserOutcomeNo,
+      TAccountAssociatedTokenProgram extends string
+        ? ReadonlyAccount<TAccountAssociatedTokenProgram>
+        : TAccountAssociatedTokenProgram,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
+      TAccountSystemProgram extends string
+        ? ReadonlyAccount<TAccountSystemProgram>
+        : TAccountSystemProgram,
       ...TRemainingAccounts,
     ]
   >;
@@ -132,80 +154,313 @@ export function getClaimRewardsInstructionDataCodec(): FixedSizeCodec<
   );
 }
 
-export type ClaimRewardsInput<
+export type ClaimRewardsAsyncInput<
   TAccountUser extends string = string,
   TAccountMarket extends string = string,
+  TAccountUserStats extends string = string,
+  TAccountCollateralMint extends string = string,
   TAccountUserCollateral extends string = string,
   TAccountCollateralVault extends string = string,
   TAccountOutcomeYesMint extends string = string,
   TAccountOutcomeNoMint extends string = string,
   TAccountUserOutcomeYes extends string = string,
   TAccountUserOutcomeNo extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountTokenProgram extends string = string,
+  TAccountSystemProgram extends string = string,
 > = {
   user: TransactionSigner<TAccountUser>;
   market: Address<TAccountMarket>;
-  userCollateral: Address<TAccountUserCollateral>;
+  userStats?: Address<TAccountUserStats>;
+  collateralMint: Address<TAccountCollateralMint>;
+  userCollateral?: Address<TAccountUserCollateral>;
   collateralVault: Address<TAccountCollateralVault>;
   outcomeYesMint: Address<TAccountOutcomeYesMint>;
   outcomeNoMint: Address<TAccountOutcomeNoMint>;
   userOutcomeYes: Address<TAccountUserOutcomeYes>;
   userOutcomeNo: Address<TAccountUserOutcomeNo>;
+  associatedTokenProgram?: Address<TAccountAssociatedTokenProgram>;
   tokenProgram?: Address<TAccountTokenProgram>;
+  systemProgram?: Address<TAccountSystemProgram>;
   marketId: ClaimRewardsInstructionDataArgs["marketId"];
 };
 
-export function getClaimRewardsInstruction<
+export async function getClaimRewardsInstructionAsync<
   TAccountUser extends string,
   TAccountMarket extends string,
+  TAccountUserStats extends string,
+  TAccountCollateralMint extends string,
   TAccountUserCollateral extends string,
   TAccountCollateralVault extends string,
   TAccountOutcomeYesMint extends string,
   TAccountOutcomeNoMint extends string,
   TAccountUserOutcomeYes extends string,
   TAccountUserOutcomeNo extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountTokenProgram extends string,
-  TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TAccountSystemProgram extends string,
+  TProgramAddress extends Address =
+    typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
 >(
-  input: ClaimRewardsInput<
+  input: ClaimRewardsAsyncInput<
     TAccountUser,
     TAccountMarket,
+    TAccountUserStats,
+    TAccountCollateralMint,
     TAccountUserCollateral,
     TAccountCollateralVault,
     TAccountOutcomeYesMint,
     TAccountOutcomeNoMint,
     TAccountUserOutcomeYes,
     TAccountUserOutcomeNo,
-    TAccountTokenProgram
+    TAccountAssociatedTokenProgram,
+    TAccountTokenProgram,
+    TAccountSystemProgram
   >,
   config?: { programAddress?: TProgramAddress },
-): ClaimRewardsInstruction<
-  TProgramAddress,
-  TAccountUser,
-  TAccountMarket,
-  TAccountUserCollateral,
-  TAccountCollateralVault,
-  TAccountOutcomeYesMint,
-  TAccountOutcomeNoMint,
-  TAccountUserOutcomeYes,
-  TAccountUserOutcomeNo,
-  TAccountTokenProgram
+): Promise<
+  ClaimRewardsInstruction<
+    TProgramAddress,
+    TAccountUser,
+    TAccountMarket,
+    TAccountUserStats,
+    TAccountCollateralMint,
+    TAccountUserCollateral,
+    TAccountCollateralVault,
+    TAccountOutcomeYesMint,
+    TAccountOutcomeNoMint,
+    TAccountUserOutcomeYes,
+    TAccountUserOutcomeNo,
+    TAccountAssociatedTokenProgram,
+    TAccountTokenProgram,
+    TAccountSystemProgram
+  >
 > {
   // Program address.
   const programAddress =
-    config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
+    config?.programAddress ?? PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
     user: { value: input.user ?? null, isWritable: true },
     market: { value: input.market ?? null, isWritable: true },
+    userStats: { value: input.userStats ?? null, isWritable: true },
+    collateralMint: { value: input.collateralMint ?? null, isWritable: false },
     userCollateral: { value: input.userCollateral ?? null, isWritable: true },
     collateralVault: { value: input.collateralVault ?? null, isWritable: true },
     outcomeYesMint: { value: input.outcomeYesMint ?? null, isWritable: true },
     outcomeNoMint: { value: input.outcomeNoMint ?? null, isWritable: true },
     userOutcomeYes: { value: input.userOutcomeYes ?? null, isWritable: true },
     userOutcomeNo: { value: input.userOutcomeNo ?? null, isWritable: true },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+  };
+  const accounts = originalAccounts as Record<
+    keyof typeof originalAccounts,
+    ResolvedInstructionAccount
+  >;
+
+  // Original args.
+  const args = { ...input };
+
+  // Resolve default values.
+  if (!accounts.userStats.value) {
+    accounts.userStats.value = await getProgramDerivedAddress({
+      programAddress,
+      seeds: [
+        getBytesEncoder().encode(
+          new Uint8Array([117, 115, 101, 114, 95, 115, 116, 97, 116, 115]),
+        ),
+        getU32Encoder().encode(
+          getNonNullResolvedInstructionInput("marketId", args.marketId),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount("user", accounts.user.value),
+        ),
+      ],
+    });
+  }
+  if (!accounts.tokenProgram.value) {
+    accounts.tokenProgram.value =
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  }
+  if (!accounts.userCollateral.value) {
+    accounts.userCollateral.value = await getProgramDerivedAddress({
+      programAddress:
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">,
+      seeds: [
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount("user", accounts.user.value),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "tokenProgram",
+            accounts.tokenProgram.value,
+          ),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "collateralMint",
+            accounts.collateralMint.value,
+          ),
+        ),
+      ],
+    });
+  }
+  if (!accounts.associatedTokenProgram.value) {
+    accounts.associatedTokenProgram.value =
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">;
+  }
+  if (!accounts.systemProgram.value) {
+    accounts.systemProgram.value =
+      "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
+  }
+
+  const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
+  return Object.freeze({
+    accounts: [
+      getAccountMeta("user", accounts.user),
+      getAccountMeta("market", accounts.market),
+      getAccountMeta("userStats", accounts.userStats),
+      getAccountMeta("collateralMint", accounts.collateralMint),
+      getAccountMeta("userCollateral", accounts.userCollateral),
+      getAccountMeta("collateralVault", accounts.collateralVault),
+      getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
+      getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
+      getAccountMeta("userOutcomeYes", accounts.userOutcomeYes),
+      getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
+      getAccountMeta("associatedTokenProgram", accounts.associatedTokenProgram),
+      getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("systemProgram", accounts.systemProgram),
+    ],
+    data: getClaimRewardsInstructionDataEncoder().encode(
+      args as ClaimRewardsInstructionDataArgs,
+    ),
+    programAddress,
+  } as ClaimRewardsInstruction<
+    TProgramAddress,
+    TAccountUser,
+    TAccountMarket,
+    TAccountUserStats,
+    TAccountCollateralMint,
+    TAccountUserCollateral,
+    TAccountCollateralVault,
+    TAccountOutcomeYesMint,
+    TAccountOutcomeNoMint,
+    TAccountUserOutcomeYes,
+    TAccountUserOutcomeNo,
+    TAccountAssociatedTokenProgram,
+    TAccountTokenProgram,
+    TAccountSystemProgram
+  >);
+}
+
+export type ClaimRewardsInput<
+  TAccountUser extends string = string,
+  TAccountMarket extends string = string,
+  TAccountUserStats extends string = string,
+  TAccountCollateralMint extends string = string,
+  TAccountUserCollateral extends string = string,
+  TAccountCollateralVault extends string = string,
+  TAccountOutcomeYesMint extends string = string,
+  TAccountOutcomeNoMint extends string = string,
+  TAccountUserOutcomeYes extends string = string,
+  TAccountUserOutcomeNo extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
+  TAccountTokenProgram extends string = string,
+  TAccountSystemProgram extends string = string,
+> = {
+  user: TransactionSigner<TAccountUser>;
+  market: Address<TAccountMarket>;
+  userStats: Address<TAccountUserStats>;
+  collateralMint: Address<TAccountCollateralMint>;
+  userCollateral: Address<TAccountUserCollateral>;
+  collateralVault: Address<TAccountCollateralVault>;
+  outcomeYesMint: Address<TAccountOutcomeYesMint>;
+  outcomeNoMint: Address<TAccountOutcomeNoMint>;
+  userOutcomeYes: Address<TAccountUserOutcomeYes>;
+  userOutcomeNo: Address<TAccountUserOutcomeNo>;
+  associatedTokenProgram?: Address<TAccountAssociatedTokenProgram>;
+  tokenProgram?: Address<TAccountTokenProgram>;
+  systemProgram?: Address<TAccountSystemProgram>;
+  marketId: ClaimRewardsInstructionDataArgs["marketId"];
+};
+
+export function getClaimRewardsInstruction<
+  TAccountUser extends string,
+  TAccountMarket extends string,
+  TAccountUserStats extends string,
+  TAccountCollateralMint extends string,
+  TAccountUserCollateral extends string,
+  TAccountCollateralVault extends string,
+  TAccountOutcomeYesMint extends string,
+  TAccountOutcomeNoMint extends string,
+  TAccountUserOutcomeYes extends string,
+  TAccountUserOutcomeNo extends string,
+  TAccountAssociatedTokenProgram extends string,
+  TAccountTokenProgram extends string,
+  TAccountSystemProgram extends string,
+  TProgramAddress extends Address =
+    typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
+>(
+  input: ClaimRewardsInput<
+    TAccountUser,
+    TAccountMarket,
+    TAccountUserStats,
+    TAccountCollateralMint,
+    TAccountUserCollateral,
+    TAccountCollateralVault,
+    TAccountOutcomeYesMint,
+    TAccountOutcomeNoMint,
+    TAccountUserOutcomeYes,
+    TAccountUserOutcomeNo,
+    TAccountAssociatedTokenProgram,
+    TAccountTokenProgram,
+    TAccountSystemProgram
+  >,
+  config?: { programAddress?: TProgramAddress },
+): ClaimRewardsInstruction<
+  TProgramAddress,
+  TAccountUser,
+  TAccountMarket,
+  TAccountUserStats,
+  TAccountCollateralMint,
+  TAccountUserCollateral,
+  TAccountCollateralVault,
+  TAccountOutcomeYesMint,
+  TAccountOutcomeNoMint,
+  TAccountUserOutcomeYes,
+  TAccountUserOutcomeNo,
+  TAccountAssociatedTokenProgram,
+  TAccountTokenProgram,
+  TAccountSystemProgram
+> {
+  // Program address.
+  const programAddress =
+    config?.programAddress ?? PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS;
+
+  // Original accounts.
+  const originalAccounts = {
+    user: { value: input.user ?? null, isWritable: true },
+    market: { value: input.market ?? null, isWritable: true },
+    userStats: { value: input.userStats ?? null, isWritable: true },
+    collateralMint: { value: input.collateralMint ?? null, isWritable: false },
+    userCollateral: { value: input.userCollateral ?? null, isWritable: true },
+    collateralVault: { value: input.collateralVault ?? null, isWritable: true },
+    outcomeYesMint: { value: input.outcomeYesMint ?? null, isWritable: true },
+    outcomeNoMint: { value: input.outcomeNoMint ?? null, isWritable: true },
+    userOutcomeYes: { value: input.userOutcomeYes ?? null, isWritable: true },
+    userOutcomeNo: { value: input.userOutcomeNo ?? null, isWritable: true },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
+    tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
+    systemProgram: { value: input.systemProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
     keyof typeof originalAccounts,
@@ -220,19 +475,31 @@ export function getClaimRewardsInstruction<
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
   }
+  if (!accounts.associatedTokenProgram.value) {
+    accounts.associatedTokenProgram.value =
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">;
+  }
+  if (!accounts.systemProgram.value) {
+    accounts.systemProgram.value =
+      "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
+  }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
   return Object.freeze({
     accounts: [
       getAccountMeta("user", accounts.user),
       getAccountMeta("market", accounts.market),
+      getAccountMeta("userStats", accounts.userStats),
+      getAccountMeta("collateralMint", accounts.collateralMint),
       getAccountMeta("userCollateral", accounts.userCollateral),
       getAccountMeta("collateralVault", accounts.collateralVault),
       getAccountMeta("outcomeYesMint", accounts.outcomeYesMint),
       getAccountMeta("outcomeNoMint", accounts.outcomeNoMint),
       getAccountMeta("userOutcomeYes", accounts.userOutcomeYes),
       getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
+      getAccountMeta("associatedTokenProgram", accounts.associatedTokenProgram),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
+      getAccountMeta("systemProgram", accounts.systemProgram),
     ],
     data: getClaimRewardsInstructionDataEncoder().encode(
       args as ClaimRewardsInstructionDataArgs,
@@ -242,31 +509,39 @@ export function getClaimRewardsInstruction<
     TProgramAddress,
     TAccountUser,
     TAccountMarket,
+    TAccountUserStats,
+    TAccountCollateralMint,
     TAccountUserCollateral,
     TAccountCollateralVault,
     TAccountOutcomeYesMint,
     TAccountOutcomeNoMint,
     TAccountUserOutcomeYes,
     TAccountUserOutcomeNo,
-    TAccountTokenProgram
+    TAccountAssociatedTokenProgram,
+    TAccountTokenProgram,
+    TAccountSystemProgram
   >);
 }
 
 export type ParsedClaimRewardsInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
   accounts: {
     user: TAccountMetas[0];
     market: TAccountMetas[1];
-    userCollateral: TAccountMetas[2];
-    collateralVault: TAccountMetas[3];
-    outcomeYesMint: TAccountMetas[4];
-    outcomeNoMint: TAccountMetas[5];
-    userOutcomeYes: TAccountMetas[6];
-    userOutcomeNo: TAccountMetas[7];
-    tokenProgram: TAccountMetas[8];
+    userStats: TAccountMetas[2];
+    collateralMint: TAccountMetas[3];
+    userCollateral: TAccountMetas[4];
+    collateralVault: TAccountMetas[5];
+    outcomeYesMint: TAccountMetas[6];
+    outcomeNoMint: TAccountMetas[7];
+    userOutcomeYes: TAccountMetas[8];
+    userOutcomeNo: TAccountMetas[9];
+    associatedTokenProgram: TAccountMetas[10];
+    tokenProgram: TAccountMetas[11];
+    systemProgram: TAccountMetas[12];
   };
   data: ClaimRewardsInstructionData;
 };
@@ -279,12 +554,12 @@ export function parseClaimRewardsInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedClaimRewardsInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 9) {
+  if (instruction.accounts.length < 13) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 9,
+        expectedAccountMetas: 13,
       },
     );
   }
@@ -299,13 +574,17 @@ export function parseClaimRewardsInstruction<
     accounts: {
       user: getNextAccount(),
       market: getNextAccount(),
+      userStats: getNextAccount(),
+      collateralMint: getNextAccount(),
       userCollateral: getNextAccount(),
       collateralVault: getNextAccount(),
       outcomeYesMint: getNextAccount(),
       outcomeNoMint: getNextAccount(),
       userOutcomeYes: getNextAccount(),
       userOutcomeNo: getNextAccount(),
+      associatedTokenProgram: getNextAccount(),
       tokenProgram: getNextAccount(),
+      systemProgram: getNextAccount(),
     },
     data: getClaimRewardsInstructionDataDecoder().decode(instruction.data),
   };

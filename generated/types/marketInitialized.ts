@@ -7,6 +7,8 @@
  */
 
 import {
+  addDecoderSizePrefix,
+  addEncoderSizePrefix,
   combineCodec,
   getAddressDecoder,
   getAddressEncoder,
@@ -16,10 +18,12 @@ import {
   getStructEncoder,
   getU32Decoder,
   getU32Encoder,
+  getUtf8Decoder,
+  getUtf8Encoder,
   type Address,
-  type FixedSizeCodec,
-  type FixedSizeDecoder,
-  type FixedSizeEncoder,
+  type Codec,
+  type Decoder,
+  type Encoder,
 } from "@solana/kit";
 
 export type MarketInitialized = {
@@ -29,6 +33,8 @@ export type MarketInitialized = {
   collateralMint: Address;
   outcomeYesMint: Address;
   outcomeNoMint: Address;
+  metaDataUrl: string;
+  timestamp: bigint;
 };
 
 export type MarketInitializedArgs = {
@@ -38,9 +44,11 @@ export type MarketInitializedArgs = {
   collateralMint: Address;
   outcomeYesMint: Address;
   outcomeNoMint: Address;
+  metaDataUrl: string;
+  timestamp: number | bigint;
 };
 
-export function getMarketInitializedEncoder(): FixedSizeEncoder<MarketInitializedArgs> {
+export function getMarketInitializedEncoder(): Encoder<MarketInitializedArgs> {
   return getStructEncoder([
     ["marketId", getU32Encoder()],
     ["authority", getAddressEncoder()],
@@ -48,10 +56,12 @@ export function getMarketInitializedEncoder(): FixedSizeEncoder<MarketInitialize
     ["collateralMint", getAddressEncoder()],
     ["outcomeYesMint", getAddressEncoder()],
     ["outcomeNoMint", getAddressEncoder()],
+    ["metaDataUrl", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
+    ["timestamp", getI64Encoder()],
   ]);
 }
 
-export function getMarketInitializedDecoder(): FixedSizeDecoder<MarketInitialized> {
+export function getMarketInitializedDecoder(): Decoder<MarketInitialized> {
   return getStructDecoder([
     ["marketId", getU32Decoder()],
     ["authority", getAddressDecoder()],
@@ -59,10 +69,12 @@ export function getMarketInitializedDecoder(): FixedSizeDecoder<MarketInitialize
     ["collateralMint", getAddressDecoder()],
     ["outcomeYesMint", getAddressDecoder()],
     ["outcomeNoMint", getAddressDecoder()],
+    ["metaDataUrl", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
+    ["timestamp", getI64Decoder()],
   ]);
 }
 
-export function getMarketInitializedCodec(): FixedSizeCodec<
+export function getMarketInitializedCodec(): Codec<
   MarketInitializedArgs,
   MarketInitialized
 > {

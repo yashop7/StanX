@@ -41,7 +41,7 @@ import {
   getAccountMetaFactory,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
+import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "../programs";
 
 export const UPDATE_METADATA_DISCRIMINATOR = new Uint8Array([
   170, 182, 43, 239, 97, 78, 225, 186,
@@ -54,7 +54,7 @@ export function getUpdateMetadataDiscriminatorBytes() {
 }
 
 export type UpdateMetadataInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountAuthority extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -129,7 +129,8 @@ export type UpdateMetadataInput<
 export function getUpdateMetadataInstruction<
   TAccountAuthority extends string,
   TAccountMarket extends string,
-  TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgramAddress extends Address =
+    typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
 >(
   input: UpdateMetadataInput<TAccountAuthority, TAccountMarket>,
   config?: { programAddress?: TProgramAddress },
@@ -140,7 +141,7 @@ export function getUpdateMetadataInstruction<
 > {
   // Program address.
   const programAddress =
-    config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
+    config?.programAddress ?? PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -173,7 +174,7 @@ export function getUpdateMetadataInstruction<
 }
 
 export type ParsedUpdateMetadataInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;

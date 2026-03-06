@@ -44,7 +44,7 @@ import {
   getNonNullResolvedInstructionInput,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
+import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "../programs";
 
 export const SPLIT_TOKENS_DISCRIMINATOR = new Uint8Array([
   79, 195, 116, 0, 140, 176, 73, 179,
@@ -57,7 +57,7 @@ export function getSplitTokensDiscriminatorBytes() {
 }
 
 export type SplitTokensInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountMarket extends string | AccountMeta<string> = string,
   TAccountUser extends string | AccountMeta<string> = string,
   TAccountUserCollateral extends string | AccountMeta<string> = string,
@@ -69,6 +69,8 @@ export type SplitTokensInstruction<
   TAccountUserStatsAccount extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
+  TAccountAssociatedTokenProgram extends string | AccountMeta<string> =
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -106,6 +108,9 @@ export type SplitTokensInstruction<
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
+      TAccountAssociatedTokenProgram extends string
+        ? ReadonlyAccount<TAccountAssociatedTokenProgram>
+        : TAccountAssociatedTokenProgram,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
@@ -164,6 +169,7 @@ export type SplitTokensAsyncInput<
   TAccountUserOutcomeNo extends string = string,
   TAccountUserStatsAccount extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountTokenProgram extends string = string,
 > = {
   market: Address<TAccountMarket>;
@@ -172,10 +178,11 @@ export type SplitTokensAsyncInput<
   collateralVault: Address<TAccountCollateralVault>;
   outcomeYesMint: Address<TAccountOutcomeYesMint>;
   outcomeNoMint: Address<TAccountOutcomeNoMint>;
-  userOutcomeYes: Address<TAccountUserOutcomeYes>;
-  userOutcomeNo: Address<TAccountUserOutcomeNo>;
+  userOutcomeYes?: Address<TAccountUserOutcomeYes>;
+  userOutcomeNo?: Address<TAccountUserOutcomeNo>;
   userStatsAccount?: Address<TAccountUserStatsAccount>;
   systemProgram?: Address<TAccountSystemProgram>;
+  associatedTokenProgram?: Address<TAccountAssociatedTokenProgram>;
   tokenProgram?: Address<TAccountTokenProgram>;
   marketId: SplitTokensInstructionDataArgs["marketId"];
   amount: SplitTokensInstructionDataArgs["amount"];
@@ -192,8 +199,10 @@ export async function getSplitTokensInstructionAsync<
   TAccountUserOutcomeNo extends string,
   TAccountUserStatsAccount extends string,
   TAccountSystemProgram extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountTokenProgram extends string,
-  TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgramAddress extends Address =
+    typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
 >(
   input: SplitTokensAsyncInput<
     TAccountMarket,
@@ -206,6 +215,7 @@ export async function getSplitTokensInstructionAsync<
     TAccountUserOutcomeNo,
     TAccountUserStatsAccount,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -222,12 +232,13 @@ export async function getSplitTokensInstructionAsync<
     TAccountUserOutcomeNo,
     TAccountUserStatsAccount,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >
 > {
   // Program address.
   const programAddress =
-    config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
+    config?.programAddress ?? PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -244,6 +255,10 @@ export async function getSplitTokensInstructionAsync<
       isWritable: true,
     },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -255,6 +270,56 @@ export async function getSplitTokensInstructionAsync<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.tokenProgram.value) {
+    accounts.tokenProgram.value =
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  }
+  if (!accounts.userOutcomeYes.value) {
+    accounts.userOutcomeYes.value = await getProgramDerivedAddress({
+      programAddress:
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">,
+      seeds: [
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount("user", accounts.user.value),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "tokenProgram",
+            accounts.tokenProgram.value,
+          ),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "outcomeYesMint",
+            accounts.outcomeYesMint.value,
+          ),
+        ),
+      ],
+    });
+  }
+  if (!accounts.userOutcomeNo.value) {
+    accounts.userOutcomeNo.value = await getProgramDerivedAddress({
+      programAddress:
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">,
+      seeds: [
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount("user", accounts.user.value),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "tokenProgram",
+            accounts.tokenProgram.value,
+          ),
+        ),
+        getAddressEncoder().encode(
+          getAddressFromResolvedInstructionAccount(
+            "outcomeNoMint",
+            accounts.outcomeNoMint.value,
+          ),
+        ),
+      ],
+    });
+  }
   if (!accounts.userStatsAccount.value) {
     accounts.userStatsAccount.value = await getProgramDerivedAddress({
       programAddress,
@@ -275,9 +340,9 @@ export async function getSplitTokensInstructionAsync<
     accounts.systemProgram.value =
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
   }
-  if (!accounts.tokenProgram.value) {
-    accounts.tokenProgram.value =
-      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  if (!accounts.associatedTokenProgram.value) {
+    accounts.associatedTokenProgram.value =
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">;
   }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
@@ -293,6 +358,7 @@ export async function getSplitTokensInstructionAsync<
       getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
       getAccountMeta("userStatsAccount", accounts.userStatsAccount),
       getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("associatedTokenProgram", accounts.associatedTokenProgram),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getSplitTokensInstructionDataEncoder().encode(
@@ -311,6 +377,7 @@ export async function getSplitTokensInstructionAsync<
     TAccountUserOutcomeNo,
     TAccountUserStatsAccount,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >);
 }
@@ -326,6 +393,7 @@ export type SplitTokensInput<
   TAccountUserOutcomeNo extends string = string,
   TAccountUserStatsAccount extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountTokenProgram extends string = string,
 > = {
   market: Address<TAccountMarket>;
@@ -338,6 +406,7 @@ export type SplitTokensInput<
   userOutcomeNo: Address<TAccountUserOutcomeNo>;
   userStatsAccount: Address<TAccountUserStatsAccount>;
   systemProgram?: Address<TAccountSystemProgram>;
+  associatedTokenProgram?: Address<TAccountAssociatedTokenProgram>;
   tokenProgram?: Address<TAccountTokenProgram>;
   marketId: SplitTokensInstructionDataArgs["marketId"];
   amount: SplitTokensInstructionDataArgs["amount"];
@@ -354,8 +423,10 @@ export function getSplitTokensInstruction<
   TAccountUserOutcomeNo extends string,
   TAccountUserStatsAccount extends string,
   TAccountSystemProgram extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountTokenProgram extends string,
-  TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgramAddress extends Address =
+    typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
 >(
   input: SplitTokensInput<
     TAccountMarket,
@@ -368,6 +439,7 @@ export function getSplitTokensInstruction<
     TAccountUserOutcomeNo,
     TAccountUserStatsAccount,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -383,11 +455,12 @@ export function getSplitTokensInstruction<
   TAccountUserOutcomeNo,
   TAccountUserStatsAccount,
   TAccountSystemProgram,
+  TAccountAssociatedTokenProgram,
   TAccountTokenProgram
 > {
   // Program address.
   const programAddress =
-    config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
+    config?.programAddress ?? PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -404,6 +477,10 @@ export function getSplitTokensInstruction<
       isWritable: true,
     },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -415,13 +492,17 @@ export function getSplitTokensInstruction<
   const args = { ...input };
 
   // Resolve default values.
+  if (!accounts.tokenProgram.value) {
+    accounts.tokenProgram.value =
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  }
   if (!accounts.systemProgram.value) {
     accounts.systemProgram.value =
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
   }
-  if (!accounts.tokenProgram.value) {
-    accounts.tokenProgram.value =
-      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
+  if (!accounts.associatedTokenProgram.value) {
+    accounts.associatedTokenProgram.value =
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">;
   }
 
   const getAccountMeta = getAccountMetaFactory(programAddress, "programId");
@@ -437,6 +518,7 @@ export function getSplitTokensInstruction<
       getAccountMeta("userOutcomeNo", accounts.userOutcomeNo),
       getAccountMeta("userStatsAccount", accounts.userStatsAccount),
       getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("associatedTokenProgram", accounts.associatedTokenProgram),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getSplitTokensInstructionDataEncoder().encode(
@@ -455,12 +537,13 @@ export function getSplitTokensInstruction<
     TAccountUserOutcomeNo,
     TAccountUserStatsAccount,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >);
 }
 
 export type ParsedSplitTokensInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
@@ -475,7 +558,8 @@ export type ParsedSplitTokensInstruction<
     userOutcomeNo: TAccountMetas[7];
     userStatsAccount: TAccountMetas[8];
     systemProgram: TAccountMetas[9];
-    tokenProgram: TAccountMetas[10];
+    associatedTokenProgram: TAccountMetas[10];
+    tokenProgram: TAccountMetas[11];
   };
   data: SplitTokensInstructionData;
 };
@@ -488,12 +572,12 @@ export function parseSplitTokensInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedSplitTokensInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 11) {
+  if (instruction.accounts.length < 12) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 11,
+        expectedAccountMetas: 12,
       },
     );
   }
@@ -516,6 +600,7 @@ export function parseSplitTokensInstruction<
       userOutcomeNo: getNextAccount(),
       userStatsAccount: getNextAccount(),
       systemProgram: getNextAccount(),
+      associatedTokenProgram: getNextAccount(),
       tokenProgram: getNextAccount(),
     },
     data: getSplitTokensInstructionDataDecoder().decode(instruction.data),

@@ -37,7 +37,7 @@ import {
   getAccountMetaFactory,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
+import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "../programs";
 
 export const CLOSE_MARKET_DISCRIMINATOR = new Uint8Array([
   88, 154, 248, 186, 48, 14, 123, 244,
@@ -50,7 +50,7 @@ export function getCloseMarketDiscriminatorBytes() {
 }
 
 export type CloseMarketInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountAuthority extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
   TAccountOrderbook extends string | AccountMeta<string> = string,
@@ -122,7 +122,8 @@ export function getCloseMarketInstruction<
   TAccountAuthority extends string,
   TAccountMarket extends string,
   TAccountOrderbook extends string,
-  TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgramAddress extends Address =
+    typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
 >(
   input: CloseMarketInput<TAccountAuthority, TAccountMarket, TAccountOrderbook>,
   config?: { programAddress?: TProgramAddress },
@@ -134,7 +135,7 @@ export function getCloseMarketInstruction<
 > {
   // Program address.
   const programAddress =
-    config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
+    config?.programAddress ?? PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -170,7 +171,7 @@ export function getCloseMarketInstruction<
 }
 
 export type ParsedCloseMarketInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;

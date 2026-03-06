@@ -44,7 +44,7 @@ import {
   getNonNullResolvedInstructionInput,
   type ResolvedInstructionAccount,
 } from "@solana/program-client-core";
-import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "../programs";
+import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "../programs";
 
 export const CANCEL_ORDER_DISCRIMINATOR = new Uint8Array([
   95, 129, 237, 240, 8, 49, 223, 132,
@@ -57,7 +57,7 @@ export function getCancelOrderDiscriminatorBytes() {
 }
 
 export type CancelOrderInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountUser extends string | AccountMeta<string> = string,
   TAccountMarket extends string | AccountMeta<string> = string,
   TAccountOrderbook extends string | AccountMeta<string> = string,
@@ -70,6 +70,8 @@ export type CancelOrderInstruction<
   TAccountNoEscrow extends string | AccountMeta<string> = string,
   TAccountSystemProgram extends string | AccountMeta<string> =
     "11111111111111111111111111111111",
+  TAccountAssociatedTokenProgram extends string | AccountMeta<string> =
+    "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
   TAccountTokenProgram extends string | AccountMeta<string> =
     "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
   TRemainingAccounts extends readonly AccountMeta<string>[] = [],
@@ -110,6 +112,9 @@ export type CancelOrderInstruction<
       TAccountSystemProgram extends string
         ? ReadonlyAccount<TAccountSystemProgram>
         : TAccountSystemProgram,
+      TAccountAssociatedTokenProgram extends string
+        ? ReadonlyAccount<TAccountAssociatedTokenProgram>
+        : TAccountAssociatedTokenProgram,
       TAccountTokenProgram extends string
         ? ReadonlyAccount<TAccountTokenProgram>
         : TAccountTokenProgram,
@@ -169,6 +174,7 @@ export type CancelOrderAsyncInput<
   TAccountYesEscrow extends string = string,
   TAccountNoEscrow extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountTokenProgram extends string = string,
 > = {
   user: TransactionSigner<TAccountUser>;
@@ -177,11 +183,12 @@ export type CancelOrderAsyncInput<
   collateralVault: Address<TAccountCollateralVault>;
   userCollateral: Address<TAccountUserCollateral>;
   userStatsAccount?: Address<TAccountUserStatsAccount>;
-  userOutcomeYes: Address<TAccountUserOutcomeYes>;
-  userOutcomeNo: Address<TAccountUserOutcomeNo>;
+  userOutcomeYes?: Address<TAccountUserOutcomeYes>;
+  userOutcomeNo?: Address<TAccountUserOutcomeNo>;
   yesEscrow: Address<TAccountYesEscrow>;
   noEscrow: Address<TAccountNoEscrow>;
   systemProgram?: Address<TAccountSystemProgram>;
+  associatedTokenProgram?: Address<TAccountAssociatedTokenProgram>;
   tokenProgram?: Address<TAccountTokenProgram>;
   marketId: CancelOrderInstructionDataArgs["marketId"];
   orderId: CancelOrderInstructionDataArgs["orderId"];
@@ -199,8 +206,10 @@ export async function getCancelOrderInstructionAsync<
   TAccountYesEscrow extends string,
   TAccountNoEscrow extends string,
   TAccountSystemProgram extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountTokenProgram extends string,
-  TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgramAddress extends Address =
+    typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
 >(
   input: CancelOrderAsyncInput<
     TAccountUser,
@@ -214,6 +223,7 @@ export async function getCancelOrderInstructionAsync<
     TAccountYesEscrow,
     TAccountNoEscrow,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -231,12 +241,13 @@ export async function getCancelOrderInstructionAsync<
     TAccountYesEscrow,
     TAccountNoEscrow,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >
 > {
   // Program address.
   const programAddress =
-    config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
+    config?.programAddress ?? PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -254,6 +265,10 @@ export async function getCancelOrderInstructionAsync<
     yesEscrow: { value: input.yesEscrow ?? null, isWritable: true },
     noEscrow: { value: input.noEscrow ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -285,6 +300,10 @@ export async function getCancelOrderInstructionAsync<
     accounts.systemProgram.value =
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
   }
+  if (!accounts.associatedTokenProgram.value) {
+    accounts.associatedTokenProgram.value =
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">;
+  }
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
       "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address<"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA">;
@@ -304,6 +323,7 @@ export async function getCancelOrderInstructionAsync<
       getAccountMeta("yesEscrow", accounts.yesEscrow),
       getAccountMeta("noEscrow", accounts.noEscrow),
       getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("associatedTokenProgram", accounts.associatedTokenProgram),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getCancelOrderInstructionDataEncoder().encode(
@@ -323,6 +343,7 @@ export async function getCancelOrderInstructionAsync<
     TAccountYesEscrow,
     TAccountNoEscrow,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >);
 }
@@ -339,6 +360,7 @@ export type CancelOrderInput<
   TAccountYesEscrow extends string = string,
   TAccountNoEscrow extends string = string,
   TAccountSystemProgram extends string = string,
+  TAccountAssociatedTokenProgram extends string = string,
   TAccountTokenProgram extends string = string,
 > = {
   user: TransactionSigner<TAccountUser>;
@@ -347,11 +369,12 @@ export type CancelOrderInput<
   collateralVault: Address<TAccountCollateralVault>;
   userCollateral: Address<TAccountUserCollateral>;
   userStatsAccount: Address<TAccountUserStatsAccount>;
-  userOutcomeYes: Address<TAccountUserOutcomeYes>;
-  userOutcomeNo: Address<TAccountUserOutcomeNo>;
+  userOutcomeYes?: Address<TAccountUserOutcomeYes>;
+  userOutcomeNo?: Address<TAccountUserOutcomeNo>;
   yesEscrow: Address<TAccountYesEscrow>;
   noEscrow: Address<TAccountNoEscrow>;
   systemProgram?: Address<TAccountSystemProgram>;
+  associatedTokenProgram?: Address<TAccountAssociatedTokenProgram>;
   tokenProgram?: Address<TAccountTokenProgram>;
   marketId: CancelOrderInstructionDataArgs["marketId"];
   orderId: CancelOrderInstructionDataArgs["orderId"];
@@ -369,8 +392,10 @@ export function getCancelOrderInstruction<
   TAccountYesEscrow extends string,
   TAccountNoEscrow extends string,
   TAccountSystemProgram extends string,
+  TAccountAssociatedTokenProgram extends string,
   TAccountTokenProgram extends string,
-  TProgramAddress extends Address = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgramAddress extends Address =
+    typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
 >(
   input: CancelOrderInput<
     TAccountUser,
@@ -384,6 +409,7 @@ export function getCancelOrderInstruction<
     TAccountYesEscrow,
     TAccountNoEscrow,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >,
   config?: { programAddress?: TProgramAddress },
@@ -400,11 +426,12 @@ export function getCancelOrderInstruction<
   TAccountYesEscrow,
   TAccountNoEscrow,
   TAccountSystemProgram,
+  TAccountAssociatedTokenProgram,
   TAccountTokenProgram
 > {
   // Program address.
   const programAddress =
-    config?.programAddress ?? PREDICTION_MARKET_PROGRAM_ADDRESS;
+    config?.programAddress ?? PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS;
 
   // Original accounts.
   const originalAccounts = {
@@ -422,6 +449,10 @@ export function getCancelOrderInstruction<
     yesEscrow: { value: input.yesEscrow ?? null, isWritable: true },
     noEscrow: { value: input.noEscrow ?? null, isWritable: true },
     systemProgram: { value: input.systemProgram ?? null, isWritable: false },
+    associatedTokenProgram: {
+      value: input.associatedTokenProgram ?? null,
+      isWritable: false,
+    },
     tokenProgram: { value: input.tokenProgram ?? null, isWritable: false },
   };
   const accounts = originalAccounts as Record<
@@ -436,6 +467,10 @@ export function getCancelOrderInstruction<
   if (!accounts.systemProgram.value) {
     accounts.systemProgram.value =
       "11111111111111111111111111111111" as Address<"11111111111111111111111111111111">;
+  }
+  if (!accounts.associatedTokenProgram.value) {
+    accounts.associatedTokenProgram.value =
+      "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address<"ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL">;
   }
   if (!accounts.tokenProgram.value) {
     accounts.tokenProgram.value =
@@ -456,6 +491,7 @@ export function getCancelOrderInstruction<
       getAccountMeta("yesEscrow", accounts.yesEscrow),
       getAccountMeta("noEscrow", accounts.noEscrow),
       getAccountMeta("systemProgram", accounts.systemProgram),
+      getAccountMeta("associatedTokenProgram", accounts.associatedTokenProgram),
       getAccountMeta("tokenProgram", accounts.tokenProgram),
     ],
     data: getCancelOrderInstructionDataEncoder().encode(
@@ -475,12 +511,13 @@ export function getCancelOrderInstruction<
     TAccountYesEscrow,
     TAccountNoEscrow,
     TAccountSystemProgram,
+    TAccountAssociatedTokenProgram,
     TAccountTokenProgram
   >);
 }
 
 export type ParsedCancelOrderInstruction<
-  TProgram extends string = typeof PREDICTION_MARKET_PROGRAM_ADDRESS,
+  TProgram extends string = typeof PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
   TAccountMetas extends readonly AccountMeta[] = readonly AccountMeta[],
 > = {
   programAddress: Address<TProgram>;
@@ -491,12 +528,13 @@ export type ParsedCancelOrderInstruction<
     collateralVault: TAccountMetas[3];
     userCollateral: TAccountMetas[4];
     userStatsAccount: TAccountMetas[5];
-    userOutcomeYes: TAccountMetas[6];
-    userOutcomeNo: TAccountMetas[7];
+    userOutcomeYes?: TAccountMetas[6] | undefined;
+    userOutcomeNo?: TAccountMetas[7] | undefined;
     yesEscrow: TAccountMetas[8];
     noEscrow: TAccountMetas[9];
     systemProgram: TAccountMetas[10];
-    tokenProgram: TAccountMetas[11];
+    associatedTokenProgram: TAccountMetas[11];
+    tokenProgram: TAccountMetas[12];
   };
   data: CancelOrderInstructionData;
 };
@@ -509,12 +547,12 @@ export function parseCancelOrderInstruction<
     InstructionWithAccounts<TAccountMetas> &
     InstructionWithData<ReadonlyUint8Array>,
 ): ParsedCancelOrderInstruction<TProgram, TAccountMetas> {
-  if (instruction.accounts.length < 12) {
+  if (instruction.accounts.length < 13) {
     throw new SolanaError(
       SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
       {
         actualAccountMetas: instruction.accounts.length,
-        expectedAccountMetas: 12,
+        expectedAccountMetas: 13,
       },
     );
   }
@@ -523,6 +561,12 @@ export function parseCancelOrderInstruction<
     const accountMeta = (instruction.accounts as TAccountMetas)[accountIndex]!;
     accountIndex += 1;
     return accountMeta;
+  };
+  const getNextOptionalAccount = () => {
+    const accountMeta = getNextAccount();
+    return accountMeta.address === PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS
+      ? undefined
+      : accountMeta;
   };
   return {
     programAddress: instruction.programAddress,
@@ -533,11 +577,12 @@ export function parseCancelOrderInstruction<
       collateralVault: getNextAccount(),
       userCollateral: getNextAccount(),
       userStatsAccount: getNextAccount(),
-      userOutcomeYes: getNextAccount(),
-      userOutcomeNo: getNextAccount(),
+      userOutcomeYes: getNextOptionalAccount(),
+      userOutcomeNo: getNextOptionalAccount(),
       yesEscrow: getNextAccount(),
       noEscrow: getNextAccount(),
       systemProgram: getNextAccount(),
+      associatedTokenProgram: getNextAccount(),
       tokenProgram: getNextAccount(),
     },
     data: getCancelOrderInstructionDataDecoder().decode(instruction.data),

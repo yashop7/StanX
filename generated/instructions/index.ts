@@ -7,12 +7,13 @@
  */
 
 export * from "./cancelOrder";
+export * from "./claimFunds";
 export * from "./claimRewards";
 export * from "./closeMarket";
 export * from "./initializeMarket";
 export * from "./marketOrder";
 export * from "./mergeTokens";
 export * from "./placeOrder";
-export * from "./setWinningSide";
+export * from "./setWinner";
 export * from "./splitTokens";
 export * from "./updateMetadata";

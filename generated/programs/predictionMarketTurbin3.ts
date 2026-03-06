@@ -44,59 +44,63 @@ import {
 } from "../accounts";
 import {
   getCancelOrderInstructionAsync,
-  getClaimRewardsInstruction,
+  getClaimFundsInstructionAsync,
+  getClaimRewardsInstructionAsync,
   getCloseMarketInstruction,
   getInitializeMarketInstructionAsync,
   getMarketOrderInstructionAsync,
-  getMergeTokensInstructionAsync,
+  getMergeTokensInstruction,
   getPlaceOrderInstructionAsync,
-  getSetWinningSideInstruction,
+  getSetWinnerInstruction,
   getSplitTokensInstructionAsync,
   getUpdateMetadataInstruction,
   parseCancelOrderInstruction,
+  parseClaimFundsInstruction,
   parseClaimRewardsInstruction,
   parseCloseMarketInstruction,
   parseInitializeMarketInstruction,
   parseMarketOrderInstruction,
   parseMergeTokensInstruction,
   parsePlaceOrderInstruction,
-  parseSetWinningSideInstruction,
+  parseSetWinnerInstruction,
   parseSplitTokensInstruction,
   parseUpdateMetadataInstruction,
   type CancelOrderAsyncInput,
-  type ClaimRewardsInput,
+  type ClaimFundsAsyncInput,
+  type ClaimRewardsAsyncInput,
   type CloseMarketInput,
   type InitializeMarketAsyncInput,
   type MarketOrderAsyncInput,
-  type MergeTokensAsyncInput,
+  type MergeTokensInput,
   type ParsedCancelOrderInstruction,
+  type ParsedClaimFundsInstruction,
   type ParsedClaimRewardsInstruction,
   type ParsedCloseMarketInstruction,
   type ParsedInitializeMarketInstruction,
   type ParsedMarketOrderInstruction,
   type ParsedMergeTokensInstruction,
   type ParsedPlaceOrderInstruction,
-  type ParsedSetWinningSideInstruction,
+  type ParsedSetWinnerInstruction,
   type ParsedSplitTokensInstruction,
   type ParsedUpdateMetadataInstruction,
   type PlaceOrderAsyncInput,
-  type SetWinningSideInput,
+  type SetWinnerInput,
   type SplitTokensAsyncInput,
   type UpdateMetadataInput,
 } from "../instructions";
 
-export const PREDICTION_MARKET_PROGRAM_ADDRESS =
-  "G25hDisDca352CVMbrF49nZUGUiuJFBrAitfF7TTTHJc" as Address<"G25hDisDca352CVMbrF49nZUGUiuJFBrAitfF7TTTHJc">;
+export const PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS =
+  "AA9xwyVDCqHJTSPtigKyvLhaMpgjmU7CCT99SXWt43DP" as Address<"AA9xwyVDCqHJTSPtigKyvLhaMpgjmU7CCT99SXWt43DP">;
 
-export enum PredictionMarketAccount {
+export enum PredictionMarketTurbin3Account {
   Market,
   OrderBook,
   UserStats,
 }
 
-export function identifyPredictionMarketAccount(
+export function identifyPredictionMarketTurbin3Account(
   account: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
-): PredictionMarketAccount {
+): PredictionMarketTurbin3Account {
   const data = "data" in account ? account.data : account;
   if (
     containsBytes(
@@ -107,7 +111,7 @@ export function identifyPredictionMarketAccount(
       0,
     )
   ) {
-    return PredictionMarketAccount.Market;
+    return PredictionMarketTurbin3Account.Market;
   }
   if (
     containsBytes(
@@ -118,7 +122,7 @@ export function identifyPredictionMarketAccount(
       0,
     )
   ) {
-    return PredictionMarketAccount.OrderBook;
+    return PredictionMarketTurbin3Account.OrderBook;
   }
   if (
     containsBytes(
@@ -129,30 +133,31 @@ export function identifyPredictionMarketAccount(
       0,
     )
   ) {
-    return PredictionMarketAccount.UserStats;
+    return PredictionMarketTurbin3Account.UserStats;
   }
   throw new SolanaError(
     SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_ACCOUNT,
-    { accountData: data, programName: "predictionMarket" },
+    { accountData: data, programName: "predictionMarketTurbin3" },
   );
 }
 
-export enum PredictionMarketInstruction {
+export enum PredictionMarketTurbin3Instruction {
   CancelOrder,
+  ClaimFunds,
   ClaimRewards,
   CloseMarket,
   InitializeMarket,
   MarketOrder,
   MergeTokens,
   PlaceOrder,
-  SetWinningSide,
+  SetWinner,
   SplitTokens,
   UpdateMetadata,
 }
 
-export function identifyPredictionMarketInstruction(
+export function identifyPredictionMarketTurbin3Instruction(
   instruction: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
-): PredictionMarketInstruction {
+): PredictionMarketTurbin3Instruction {
   const data = "data" in instruction ? instruction.data : instruction;
   if (
     containsBytes(
@@ -163,7 +168,18 @@ export function identifyPredictionMarketInstruction(
       0,
     )
   ) {
-    return PredictionMarketInstruction.CancelOrder;
+    return PredictionMarketTurbin3Instruction.CancelOrder;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([145, 36, 143, 242, 168, 66, 200, 155]),
+      ),
+      0,
+    )
+  ) {
+    return PredictionMarketTurbin3Instruction.ClaimFunds;
   }
   if (
     containsBytes(
@@ -174,7 +190,7 @@ export function identifyPredictionMarketInstruction(
       0,
     )
   ) {
-    return PredictionMarketInstruction.ClaimRewards;
+    return PredictionMarketTurbin3Instruction.ClaimRewards;
   }
   if (
     containsBytes(
@@ -185,7 +201,7 @@ export function identifyPredictionMarketInstruction(
       0,
     )
   ) {
-    return PredictionMarketInstruction.CloseMarket;
+    return PredictionMarketTurbin3Instruction.CloseMarket;
   }
   if (
     containsBytes(
@@ -196,7 +212,7 @@ export function identifyPredictionMarketInstruction(
       0,
     )
   ) {
-    return PredictionMarketInstruction.InitializeMarket;
+    return PredictionMarketTurbin3Instruction.InitializeMarket;
   }
   if (
     containsBytes(
@@ -207,7 +223,7 @@ export function identifyPredictionMarketInstruction(
       0,
     )
   ) {
-    return PredictionMarketInstruction.MarketOrder;
+    return PredictionMarketTurbin3Instruction.MarketOrder;
   }
   if (
     containsBytes(
@@ -218,7 +234,7 @@ export function identifyPredictionMarketInstruction(
       0,
     )
   ) {
-    return PredictionMarketInstruction.MergeTokens;
+    return PredictionMarketTurbin3Instruction.MergeTokens;
   }
   if (
     containsBytes(
@@ -229,18 +245,18 @@ export function identifyPredictionMarketInstruction(
       0,
     )
   ) {
-    return PredictionMarketInstruction.PlaceOrder;
+    return PredictionMarketTurbin3Instruction.PlaceOrder;
   }
   if (
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([228, 154, 61, 145, 237, 24, 26, 15]),
+        new Uint8Array([207, 149, 39, 13, 31, 233, 182, 109]),
       ),
       0,
     )
   ) {
-    return PredictionMarketInstruction.SetWinningSide;
+    return PredictionMarketTurbin3Instruction.SetWinner;
   }
   if (
     containsBytes(
@@ -251,7 +267,7 @@ export function identifyPredictionMarketInstruction(
       0,
     )
   ) {
-    return PredictionMarketInstruction.SplitTokens;
+    return PredictionMarketTurbin3Instruction.SplitTokens;
   }
   if (
     containsBytes(
@@ -262,120 +278,133 @@ export function identifyPredictionMarketInstruction(
       0,
     )
   ) {
-    return PredictionMarketInstruction.UpdateMetadata;
+    return PredictionMarketTurbin3Instruction.UpdateMetadata;
   }
   throw new SolanaError(
     SOLANA_ERROR__PROGRAM_CLIENTS__FAILED_TO_IDENTIFY_INSTRUCTION,
-    { instructionData: data, programName: "predictionMarket" },
+    { instructionData: data, programName: "predictionMarketTurbin3" },
   );
 }
 
-export type ParsedPredictionMarketInstruction<
-  TProgram extends string = "G25hDisDca352CVMbrF49nZUGUiuJFBrAitfF7TTTHJc",
+export type ParsedPredictionMarketTurbin3Instruction<
+  TProgram extends string = "AA9xwyVDCqHJTSPtigKyvLhaMpgjmU7CCT99SXWt43DP",
 > =
   | ({
-      instructionType: PredictionMarketInstruction.CancelOrder;
+      instructionType: PredictionMarketTurbin3Instruction.CancelOrder;
     } & ParsedCancelOrderInstruction<TProgram>)
   | ({
-      instructionType: PredictionMarketInstruction.ClaimRewards;
+      instructionType: PredictionMarketTurbin3Instruction.ClaimFunds;
+    } & ParsedClaimFundsInstruction<TProgram>)
+  | ({
+      instructionType: PredictionMarketTurbin3Instruction.ClaimRewards;
     } & ParsedClaimRewardsInstruction<TProgram>)
   | ({
-      instructionType: PredictionMarketInstruction.CloseMarket;
+      instructionType: PredictionMarketTurbin3Instruction.CloseMarket;
     } & ParsedCloseMarketInstruction<TProgram>)
   | ({
-      instructionType: PredictionMarketInstruction.InitializeMarket;
+      instructionType: PredictionMarketTurbin3Instruction.InitializeMarket;
     } & ParsedInitializeMarketInstruction<TProgram>)
   | ({
-      instructionType: PredictionMarketInstruction.MarketOrder;
+      instructionType: PredictionMarketTurbin3Instruction.MarketOrder;
     } & ParsedMarketOrderInstruction<TProgram>)
   | ({
-      instructionType: PredictionMarketInstruction.MergeTokens;
+      instructionType: PredictionMarketTurbin3Instruction.MergeTokens;
     } & ParsedMergeTokensInstruction<TProgram>)
   | ({
-      instructionType: PredictionMarketInstruction.PlaceOrder;
+      instructionType: PredictionMarketTurbin3Instruction.PlaceOrder;
     } & ParsedPlaceOrderInstruction<TProgram>)
   | ({
-      instructionType: PredictionMarketInstruction.SetWinningSide;
-    } & ParsedSetWinningSideInstruction<TProgram>)
+      instructionType: PredictionMarketTurbin3Instruction.SetWinner;
+    } & ParsedSetWinnerInstruction<TProgram>)
   | ({
-      instructionType: PredictionMarketInstruction.SplitTokens;
+      instructionType: PredictionMarketTurbin3Instruction.SplitTokens;
     } & ParsedSplitTokensInstruction<TProgram>)
   | ({
-      instructionType: PredictionMarketInstruction.UpdateMetadata;
+      instructionType: PredictionMarketTurbin3Instruction.UpdateMetadata;
     } & ParsedUpdateMetadataInstruction<TProgram>);
 
-export function parsePredictionMarketInstruction<TProgram extends string>(
+export function parsePredictionMarketTurbin3Instruction<
+  TProgram extends string,
+>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
-): ParsedPredictionMarketInstruction<TProgram> {
-  const instructionType = identifyPredictionMarketInstruction(instruction);
+): ParsedPredictionMarketTurbin3Instruction<TProgram> {
+  const instructionType =
+    identifyPredictionMarketTurbin3Instruction(instruction);
   switch (instructionType) {
-    case PredictionMarketInstruction.CancelOrder: {
+    case PredictionMarketTurbin3Instruction.CancelOrder: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: PredictionMarketInstruction.CancelOrder,
+        instructionType: PredictionMarketTurbin3Instruction.CancelOrder,
         ...parseCancelOrderInstruction(instruction),
       };
     }
-    case PredictionMarketInstruction.ClaimRewards: {
+    case PredictionMarketTurbin3Instruction.ClaimFunds: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: PredictionMarketInstruction.ClaimRewards,
+        instructionType: PredictionMarketTurbin3Instruction.ClaimFunds,
+        ...parseClaimFundsInstruction(instruction),
+      };
+    }
+    case PredictionMarketTurbin3Instruction.ClaimRewards: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: PredictionMarketTurbin3Instruction.ClaimRewards,
         ...parseClaimRewardsInstruction(instruction),
       };
     }
-    case PredictionMarketInstruction.CloseMarket: {
+    case PredictionMarketTurbin3Instruction.CloseMarket: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: PredictionMarketInstruction.CloseMarket,
+        instructionType: PredictionMarketTurbin3Instruction.CloseMarket,
         ...parseCloseMarketInstruction(instruction),
       };
     }
-    case PredictionMarketInstruction.InitializeMarket: {
+    case PredictionMarketTurbin3Instruction.InitializeMarket: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: PredictionMarketInstruction.InitializeMarket,
+        instructionType: PredictionMarketTurbin3Instruction.InitializeMarket,
         ...parseInitializeMarketInstruction(instruction),
       };
     }
-    case PredictionMarketInstruction.MarketOrder: {
+    case PredictionMarketTurbin3Instruction.MarketOrder: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: PredictionMarketInstruction.MarketOrder,
+        instructionType: PredictionMarketTurbin3Instruction.MarketOrder,
         ...parseMarketOrderInstruction(instruction),
       };
     }
-    case PredictionMarketInstruction.MergeTokens: {
+    case PredictionMarketTurbin3Instruction.MergeTokens: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: PredictionMarketInstruction.MergeTokens,
+        instructionType: PredictionMarketTurbin3Instruction.MergeTokens,
         ...parseMergeTokensInstruction(instruction),
       };
     }
-    case PredictionMarketInstruction.PlaceOrder: {
+    case PredictionMarketTurbin3Instruction.PlaceOrder: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: PredictionMarketInstruction.PlaceOrder,
+        instructionType: PredictionMarketTurbin3Instruction.PlaceOrder,
         ...parsePlaceOrderInstruction(instruction),
       };
     }
-    case PredictionMarketInstruction.SetWinningSide: {
+    case PredictionMarketTurbin3Instruction.SetWinner: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: PredictionMarketInstruction.SetWinningSide,
-        ...parseSetWinningSideInstruction(instruction),
+        instructionType: PredictionMarketTurbin3Instruction.SetWinner,
+        ...parseSetWinnerInstruction(instruction),
       };
     }
-    case PredictionMarketInstruction.SplitTokens: {
+    case PredictionMarketTurbin3Instruction.SplitTokens: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: PredictionMarketInstruction.SplitTokens,
+        instructionType: PredictionMarketTurbin3Instruction.SplitTokens,
         ...parseSplitTokensInstruction(instruction),
       };
     }
-    case PredictionMarketInstruction.UpdateMetadata: {
+    case PredictionMarketTurbin3Instruction.UpdateMetadata: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: PredictionMarketInstruction.UpdateMetadata,
+        instructionType: PredictionMarketTurbin3Instruction.UpdateMetadata,
         ...parseUpdateMetadataInstruction(instruction),
       };
     }
@@ -384,18 +413,18 @@ export function parsePredictionMarketInstruction<TProgram extends string>(
         SOLANA_ERROR__PROGRAM_CLIENTS__UNRECOGNIZED_INSTRUCTION_TYPE,
         {
           instructionType: instructionType as string,
-          programName: "predictionMarket",
+          programName: "predictionMarketTurbin3",
         },
       );
   }
 }
 
-export type PredictionMarketPlugin = {
-  accounts: PredictionMarketPluginAccounts;
-  instructions: PredictionMarketPluginInstructions;
+export type PredictionMarketTurbin3Plugin = {
+  accounts: PredictionMarketTurbin3PluginAccounts;
+  instructions: PredictionMarketTurbin3PluginInstructions;
 };
 
-export type PredictionMarketPluginAccounts = {
+export type PredictionMarketTurbin3PluginAccounts = {
   market: ReturnType<typeof getMarketCodec> &
     SelfFetchFunctions<MarketArgs, Market>;
   orderBook: ReturnType<typeof getOrderBookCodec> &
@@ -404,14 +433,19 @@ export type PredictionMarketPluginAccounts = {
     SelfFetchFunctions<UserStatsArgs, UserStats>;
 };
 
-export type PredictionMarketPluginInstructions = {
+export type PredictionMarketTurbin3PluginInstructions = {
   cancelOrder: (
     input: CancelOrderAsyncInput,
   ) => ReturnType<typeof getCancelOrderInstructionAsync> &
     SelfPlanAndSendFunctions;
+  claimFunds: (
+    input: ClaimFundsAsyncInput,
+  ) => ReturnType<typeof getClaimFundsInstructionAsync> &
+    SelfPlanAndSendFunctions;
   claimRewards: (
-    input: ClaimRewardsInput,
-  ) => ReturnType<typeof getClaimRewardsInstruction> & SelfPlanAndSendFunctions;
+    input: ClaimRewardsAsyncInput,
+  ) => ReturnType<typeof getClaimRewardsInstructionAsync> &
+    SelfPlanAndSendFunctions;
   closeMarket: (
     input: CloseMarketInput,
   ) => ReturnType<typeof getCloseMarketInstruction> & SelfPlanAndSendFunctions;
@@ -424,17 +458,15 @@ export type PredictionMarketPluginInstructions = {
   ) => ReturnType<typeof getMarketOrderInstructionAsync> &
     SelfPlanAndSendFunctions;
   mergeTokens: (
-    input: MergeTokensAsyncInput,
-  ) => ReturnType<typeof getMergeTokensInstructionAsync> &
-    SelfPlanAndSendFunctions;
+    input: MergeTokensInput,
+  ) => ReturnType<typeof getMergeTokensInstruction> & SelfPlanAndSendFunctions;
   placeOrder: (
     input: PlaceOrderAsyncInput,
   ) => ReturnType<typeof getPlaceOrderInstructionAsync> &
     SelfPlanAndSendFunctions;
-  setWinningSide: (
-    input: SetWinningSideInput,
-  ) => ReturnType<typeof getSetWinningSideInstruction> &
-    SelfPlanAndSendFunctions;
+  setWinner: (
+    input: SetWinnerInput,
+  ) => ReturnType<typeof getSetWinnerInstruction> & SelfPlanAndSendFunctions;
   splitTokens: (
     input: SplitTokensAsyncInput,
   ) => ReturnType<typeof getSplitTokensInstructionAsync> &
@@ -445,17 +477,17 @@ export type PredictionMarketPluginInstructions = {
     SelfPlanAndSendFunctions;
 };
 
-export type PredictionMarketPluginRequirements = ClientWithRpc<
+export type PredictionMarketTurbin3PluginRequirements = ClientWithRpc<
   GetAccountInfoApi & GetMultipleAccountsApi
 > &
   ClientWithTransactionPlanning &
   ClientWithTransactionSending;
 
-export function predictionMarketProgram() {
-  return <T extends PredictionMarketPluginRequirements>(client: T) => {
+export function predictionMarketTurbin3Program() {
+  return <T extends PredictionMarketTurbin3PluginRequirements>(client: T) => {
     return {
       ...client,
-      predictionMarket: <PredictionMarketPlugin>{
+      predictionMarketTurbin3: <PredictionMarketTurbin3Plugin>{
         accounts: {
           market: addSelfFetchFunctions(client, getMarketCodec()),
           orderBook: addSelfFetchFunctions(client, getOrderBookCodec()),
@@ -467,10 +499,15 @@ export function predictionMarketProgram() {
               client,
               getCancelOrderInstructionAsync(input),
             ),
+          claimFunds: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getClaimFundsInstructionAsync(input),
+            ),
           claimRewards: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getClaimRewardsInstruction(input),
+              getClaimRewardsInstructionAsync(input),
             ),
           closeMarket: (input) =>
             addSelfPlanAndSendFunctions(
@@ -490,18 +527,15 @@ export function predictionMarketProgram() {
           mergeTokens: (input) =>
             addSelfPlanAndSendFunctions(
               client,
-              getMergeTokensInstructionAsync(input),
+              getMergeTokensInstruction(input),
             ),
           placeOrder: (input) =>
             addSelfPlanAndSendFunctions(
               client,
               getPlaceOrderInstructionAsync(input),
             ),
-          setWinningSide: (input) =>
-            addSelfPlanAndSendFunctions(
-              client,
-              getSetWinningSideInstruction(input),
-            ),
+          setWinner: (input) =>
+            addSelfPlanAndSendFunctions(client, getSetWinnerInstruction(input)),
           splitTokens: (input) =>
             addSelfPlanAndSendFunctions(
               client,

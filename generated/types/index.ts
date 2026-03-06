@@ -6,6 +6,7 @@
  * @see https://github.com/codama-idl/codama
  */
 
+export * from "./fundsClaimed";
 export * from "./marketClosed";
 export * from "./marketInitialized";
 export * from "./marketOrderExecuted";
