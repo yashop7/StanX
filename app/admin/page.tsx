@@ -13,7 +13,7 @@ import { AlertCircle, CheckCircle2, Loader2, ExternalLink } from "lucide-react";
 export default function AdminPage() {
   const [marketId, setMarketId] = useState("");
   const [settlementDeadline, setSettlementDeadline] = useState("");
-  const [metadataUrl, setMetadataUrl] = useState("");
+  const [metaDataUrl, setMetaDataUrl] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<{
     success: boolean;
@@ -46,7 +46,7 @@ export default function AdminPage() {
     const response = await initializeMarketAction({
       marketId: parseInt(marketId),
       settlementDeadline,
-      metadataUrl,
+      metaDataUrl,
     });
 
     setResult(response);
@@ -58,7 +58,7 @@ export default function AdminPage() {
       // Clear form
       setMarketId("");
       setSettlementDeadline("");
-      setMetadataUrl("");
+      setMetaDataUrl("");
     }
   };
 
@@ -127,8 +127,8 @@ export default function AdminPage() {
                   id="metadata"
                   type="url"
                   placeholder="https://example.com/market-metadata.json"
-                  value={metadataUrl}
-                  onChange={(e) => setMetadataUrl(e.target.value)}
+                  value={metaDataUrl}
+                  onChange={(e) => setMetaDataUrl(e.target.value)}
                   required
                   disabled={isLoading}
                 />

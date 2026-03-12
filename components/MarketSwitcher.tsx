@@ -4,15 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ChevronRight } from 'lucide-react';
-import { useStore } from '@/lib/store';
 import { useRouter } from 'next/navigation';
+import type { DisplayMarket } from '@/lib/blockchain/markets';
 
 interface MarketSwitcherProps {
+  markets: DisplayMarket[];
   currentMarketId: string;
 }
 
-export const MarketSwitcher = ({ currentMarketId }: MarketSwitcherProps) => {
-  const markets = useStore((state) => state.markets);
+export const MarketSwitcher = ({ markets, currentMarketId }: MarketSwitcherProps) => {
   const router = useRouter();
 
   const formatVolume = (volume: number) => {
@@ -22,7 +22,7 @@ export const MarketSwitcher = ({ currentMarketId }: MarketSwitcherProps) => {
   };
 
   const quickAccessMarkets = markets
-    .filter(m => m.id !== currentMarketId)
+    .filter(m => m.marketId.toString() !== currentMarketId)
     .slice(0, 6);
 
   return (
@@ -37,10 +37,10 @@ export const MarketSwitcher = ({ currentMarketId }: MarketSwitcherProps) => {
       <div className="p-5 space-y-2">
         {quickAccessMarkets.map((market) => (
           <Button
-            key={market.id}
+            key={market.marketId}
             variant="ghost"
             className="w-full justify-start h-auto p-3 text-left hover:bg-muted/50 rounded-xl"
-            onClick={() => router.push(`/market/${market.id}`)}
+            onClick={() => router.push(`/market/${market.marketId}`)}
           >
             <div className="flex-1 min-w-0 space-y-1">
               <div className="font-medium truncate text-sm leading-tight">

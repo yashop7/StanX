@@ -42,7 +42,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import { useStore } from '@/lib/store';
+import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 
 const performanceData = [
   { date: 'Jan', pnl: 1200 },
@@ -172,8 +172,9 @@ const CustomTooltip = ({ active, payload }: TooltipProps<number, string>) => {
 
 export default function Portfolio() {
   const [isLoading, setIsLoading] = useState(true);
-  const balance = useStore((state) => state.balance);
-  const lockedBalance = useStore((state) => state.lockedBalance);
+  const { usdcBalance } = useUsdcBalance();
+  const balance = usdcBalance ?? 0;
+  const lockedBalance = 0;
 
   useEffect(() => {
     const timer = setTimeout(() => {

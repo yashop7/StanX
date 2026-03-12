@@ -14,7 +14,7 @@ import type { Address } from "@solana/kit";
 export interface InitializeMarketFormData {
   marketId: number;
   settlementDeadline: string; // ISO date string
-  metadataUrl: string;
+  metaDataUrl: string;
 }
 
 export interface MarketWithAddress {
@@ -42,13 +42,28 @@ export async function initializeMarketAction(
       Math.floor(new Date(formData.settlementDeadline).getTime() / 1000)
     );
 
+    // Validate settlement deadline is in the future
+    const now = BigInt(Math.floor(Date.now() / 1000));
+    if (settlementDeadline <= now) {
+      return {
+        success: false,
+        error: `Settlement deadline must be in the future. You provided: ${new Date(Number(settlementDeadline) * 1000).toISOString()}, Current time: ${new Date(Number(now) * 1000).toISOString()}`,
+      };
+    }
+
+    console.log("Initializing market with params:");
+    console.log("- Market ID:", formData.marketId);
+    console.log("- Settlement Deadline:", new Date(Number(settlementDeadline) * 1000).toISOString());
+    console.log("- Metadata URL:", formData.metaDataUrl);
+    console.log("- Authority:", authority.address);
+
     // Call the blockchain function
     const result = await initializeMarket({
       authority,
       collateralMint: USDC_DEVNET,
       marketId: formData.marketId,
       settlementDeadline,
-      metadataUrl: formData.metadataUrl || "",
+      metaDataUrl: formData.metaDataUrl || "",
     });
 
     return {

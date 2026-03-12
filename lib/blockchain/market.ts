@@ -22,30 +22,179 @@ import {
   setTransactionMessageFeePayerSigner,
   setTransactionMessageLifetimeUsingBlockhash,
   signTransactionMessageWithSigners,
+  getAddressEncoder,
+  getBytesEncoder,
+  getU32Encoder,
+  getProgramDerivedAddress,
   type Address,
   type TransactionSigner,
   type FullySignedTransaction,
   type TransactionBlockhashLifetime,
 } from "@solana/kit";
 
-// Codama-generated instruction builder for initialize_market
+// Codama-generated instruction builders
 import { getInitializeMarketInstructionAsync } from "@/generated/instructions/initializeMarket";
+import { getPlaceOrderInstructionAsync } from "@/generated/instructions/placeOrder";
+import { getMarketOrderInstructionAsync } from "@/generated/instructions/marketOrder";
+import { getSplitTokensInstructionAsync } from "@/generated/instructions/splitTokens";
 import {
   fetchMarket,
   fetchAllMaybeMarket,
   type Market,
   MARKET_DISCRIMINATOR,
 } from "@/generated/accounts/market";
-import { PREDICTION_MARKET_PROGRAM_ADDRESS } from "@/generated/programs";
+import { OrderSide, TokenType } from "@/generated/types";
+import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "@/generated/programs";
 
 // Shared RPC clients
 import { rpc, rpcSubscriptions } from "./client";
 
-// Pre-built sender — factory is called once at module level
+// Pre-built sender for server-side initializeMarket calls
 const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({
   rpc,
   rpcSubscriptions,
 });
+
+// ── Shared constants & helpers ────────────────────────────────────────────────
+
+export const PRICE_SCALE = 1_000_000; // 1 USDC = 1_000_000 micro-USDC
+
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address;
+const ATA_PROGRAM   = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address;
+const MARKET_SEED   = new Uint8Array([109,97,114,107,101,116]);           // "market"
+const ORDERBOOK_SEED = new Uint8Array([111,114,100,101,114,98,111,111,107]); // "orderbook"
+
+async function deriveATA(wallet: Address, mint: Address): Promise<Address> {
+  const enc = getAddressEncoder();
+  const [ata] = await getProgramDerivedAddress({
+    programAddress: ATA_PROGRAM,
+    seeds: [enc.encode(wallet), enc.encode(TOKEN_PROGRAM), enc.encode(mint)],
+  });
+  return ata;
+}
+
+async function getMarketContext(marketId: number) {
+  const [marketPda] = await getProgramDerivedAddress({
+    programAddress: PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
+    seeds: [getBytesEncoder().encode(MARKET_SEED), getU32Encoder().encode(marketId)],
+  });
+  const [orderbookPda] = await getProgramDerivedAddress({
+    programAddress: PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
+    seeds: [getBytesEncoder().encode(ORDERBOOK_SEED), getU32Encoder().encode(marketId)],
+  });
+  const { data } = await fetchMarket(rpc, marketPda);
+  return { marketPda, orderbookPda, market: data };
+}
+
+// ── Place limit order ─────────────────────────────────────────────────────────
+
+export interface PlaceOrderParams {
+  userSigner: TransactionSigner; // real wallet signer — same instance used by send()
+  marketId: number;
+  tokenType: "YES" | "NO";   // which outcome token
+  orderSide: "BUY" | "SELL"; // buy or sell that token
+  quantity: bigint;          // number of outcome tokens
+  price: bigint;             // micro-USDC  e.g. 50¢ → 500_000
+}
+
+export async function buildLimitOrderInstruction(params: PlaceOrderParams) {
+  const { userSigner, marketId, tokenType, orderSide, quantity, price } = params;
+  const walletAddress = userSigner.address;
+  const { marketPda, orderbookPda, market } = await getMarketContext(marketId);
+
+  const userCollateral = await deriveATA(walletAddress, market.collateralMint);
+  const userOutcomeYes = await deriveATA(walletAddress, market.outcomeYesMint);
+  const userOutcomeNo  = await deriveATA(walletAddress, market.outcomeNoMint);
+
+  return getPlaceOrderInstructionAsync({
+    user:            userSigner,
+    market:          marketPda,
+    orderbook:       orderbookPda,
+    collateralVault: market.collateralVault,
+    userCollateral,
+    userOutcomeYes,
+    userOutcomeNo,
+    yesEscrow:       market.yesEscrow,
+    noEscrow:        market.noEscrow,
+    marketId,
+    side:            orderSide === "BUY" ? OrderSide.Buy : OrderSide.Sell,
+    tokenType:       tokenType === "YES" ? TokenType.Yes : TokenType.No,
+    quantity,
+    price,
+    maxIteration:    BigInt(10),
+  });
+}
+
+// ── Split tokens (initialises userOutcomeYes + userOutcomeNo ATAs) ────────────
+
+export interface SplitParams {
+  userSigner: TransactionSigner;
+  marketId: number;
+  /** micro-USDC to split — minimum 1 just to initialise ATAs */
+  amount: bigint;
+}
+
+export async function buildSplitInstruction(params: SplitParams) {
+  const { userSigner, marketId, amount } = params;
+  const walletAddress = userSigner.address;
+  const { marketPda, market } = await getMarketContext(marketId);
+
+  const userCollateral = await deriveATA(walletAddress, market.collateralMint);
+  const userOutcomeYes = await deriveATA(walletAddress, market.outcomeYesMint);
+  const userOutcomeNo  = await deriveATA(walletAddress, market.outcomeNoMint);
+
+  return getSplitTokensInstructionAsync({
+    market:          marketPda,
+    user:            userSigner,
+    userCollateral,
+    collateralVault: market.collateralVault,
+    outcomeYesMint:  market.outcomeYesMint,
+    outcomeNoMint:   market.outcomeNoMint,
+    userOutcomeYes,
+    userOutcomeNo,
+    marketId,
+    amount,
+  });
+}
+
+// ── Market order ──────────────────────────────────────────────────────────────
+
+export interface MarketOrderParams {
+  userSigner: TransactionSigner; // real wallet signer — same instance used by send()
+  marketId: number;
+  tokenType: "YES" | "NO";   // which outcome token
+  orderSide: "BUY" | "SELL"; // buy or sell that token
+  orderAmount: bigint;       // micro-USDC (buy) or micro-tokens (sell)
+}
+
+export async function buildMarketOrderInstruction(params: MarketOrderParams) {
+  const { userSigner, marketId, tokenType, orderSide, orderAmount } = params;
+  const walletAddress = userSigner.address;
+  const { marketPda, orderbookPda, market } = await getMarketContext(marketId);
+
+  const userCollateral = await deriveATA(walletAddress, market.collateralMint);
+  const userOutcomeYes = await deriveATA(walletAddress, market.outcomeYesMint);
+  const userOutcomeNo  = await deriveATA(walletAddress, market.outcomeNoMint);
+
+  return getMarketOrderInstructionAsync({
+    user:            userSigner,
+    market:          marketPda,
+    orderbook:       orderbookPda,
+    collateralVault: market.collateralVault,
+    userCollateral,
+    outcomeYesMint:  market.outcomeYesMint,
+    outcomeNoMint:   market.outcomeNoMint,
+    userOutcomeYes,
+    userOutcomeNo,
+    yesEscrow:       market.yesEscrow,
+    noEscrow:        market.noEscrow,
+    marketId,
+    side:            orderSide === "BUY" ? OrderSide.Buy : OrderSide.Sell,
+    tokenType:       tokenType === "YES" ? TokenType.Yes : TokenType.No,
+    orderAmount,
+    maxIteration:    BigInt(10),
+  });
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,7 +222,7 @@ export interface InitializeMarketParams {
    */
   settlementDeadline: bigint;
 
-  metadataUrl: string;
+  metaDataUrl: string;
 }
 
 export interface InitializeMarketResult {
@@ -112,7 +261,7 @@ export async function initializeMarket(
     collateralMint,
     marketId,
     settlementDeadline,
-    metadataUrl,
+    metaDataUrl,
   } = params;
 
   // ── Step 1: Build the instruction ──────────────────────────────────────────
@@ -127,7 +276,7 @@ export async function initializeMarket(
     collateralMint, // the mint address we provide
     marketId, // u32 — used to derive all PDAs
     settlementDeadline, // i64 as bigint
-    metadataUrl,
+    metaDataUrl,
     // market, collateralVault, outcomeYesMint, outcomeNoMint,
     // yesEscrow, noEscrow, orderbook → all auto-derived from marketId ✅
     // systemProgram, tokenProgram, rent → all defaulted ✅
@@ -171,12 +320,29 @@ export async function initializeMarket(
   //
   // Sends the transaction and WAITS until it is finalized on-chain
   // (or throws if it fails / times out).
-  await sendAndConfirmTransaction(
-    signedTransaction as Parameters<typeof sendAndConfirmTransaction>[0],
-    {
-      commitment: "confirmed",
-    }
-  );
+  try {
+    await sendAndConfirmTransaction(
+      signedTransaction as Parameters<typeof sendAndConfirmTransaction>[0],
+      {
+        commitment: "confirmed",
+      }
+    );
+  } catch (error: any) {
+    // Enhanced error logging for debugging
+    console.error("❌ Transaction failed:");
+    console.error("Error:", error);
+    console.error("Error context:", error?.context);
+    console.error("Cause:", error?.cause);
+    
+    // Log transaction parameters for debugging
+    console.error("\nTransaction params:");
+    console.error("- Market ID:", marketId);
+    console.error("- Settlement Deadline:", new Date(Number(settlementDeadline) * 1000).toISOString());
+    console.error("- Collateral Mint:", collateralMint);
+    console.error("- Authority:", authority.address);
+    
+    throw error;
+  }
 
   // ── Return the signature ──────────────────────────────────────────────────
   const signature = getSignatureFromTransaction(signedTransaction);
@@ -210,7 +376,7 @@ export async function getAllMarkets(): Promise<
     // getProgramAccounts finds ALL accounts owned by our program
     // that start with the Market discriminator (first 8 bytes)
     const response = await rpc
-      .getProgramAccounts(PREDICTION_MARKET_PROGRAM_ADDRESS, {
+      .getProgramAccounts(PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS, {
         encoding: "base64",
         filters: [
           {

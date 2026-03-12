@@ -8,11 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { useStore } from '@/lib/store';
+import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 import { Wallet, ArrowDownToLine, ArrowUpFromLine, History } from 'lucide-react';
 
 export default function Account() {
-  const balance = useStore((state) => state.balance);
+  const { usdcBalance } = useUsdcBalance();
+  const balance = usdcBalance ?? 0;
 
   return (
     <div className="min-h-screen flex flex-col">

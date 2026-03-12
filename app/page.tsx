@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
 import { MarketCard } from "@/components/MarketCard";
 import { MarketCardSkeleton } from "@/components/MarketCardSkeleton";
 import { PageTransition } from "@/components/PageTransition";
 import { Button } from "@/components/ui/button";
-import { useStore } from "@/lib/store";
+import { getMarketsAction } from "@/app/markets/actions";
+import type { DisplayMarket } from "@/lib/blockchain/markets";
 import { 
   ArrowRight, 
   Clapperboard, 
@@ -22,21 +23,20 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const Home = () => {
-  const markets = useStore((state) => state.markets);
+  const [markets, setMarkets] = useState<DisplayMarket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Featured markets for hero
-  const featuredMarkets = markets.slice(0, 3);
-
-  // Trending markets (by volume)
-  const trendingMarkets = [...markets]
-    .sort((a, b) => b.volume - a.volume)
-    .slice(0, 6);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
+  const loadMarkets = useCallback(async () => {
+    setIsLoading(true);
+    const result = await getMarketsAction();
+    if (result.success && result.markets) setMarkets(result.markets);
+    setIsLoading(false);
   }, []);
+
+  useEffect(() => { loadMarkets(); }, [loadMarkets]);
+
+  const featuredMarkets = markets.slice(0, 3);
+  const trendingMarkets = [...markets].sort((a, b) => b.volume - a.volume).slice(0, 6);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -138,8 +138,8 @@ const Home = () => {
                 <div className="flex gap-8 animate-scroll whitespace-nowrap">
                   {[...markets, ...markets].slice(0, 16).map((market, idx) => (
                     <Link
-                      key={`${market.id}-${idx}`}
-                      href={`/market/${market.id}`}
+                      key={`${market.marketId}-${idx}`}
+                      href={`/market/${market.marketId}`}
                       className="flex items-center gap-2.5 shrink-0 text-sm group"
                     >
                       <span className="font-medium text-muted-foreground group-hover:text-foreground transition-colors">
@@ -198,7 +198,7 @@ const Home = () => {
                     ))
                   : featuredMarkets.map((market, i) => (
                       <div
-                        key={market.id}
+                        key={market.marketId}
                         className="stagger-in"
                         style={{ animationDelay: `${i * 80}ms` }}
                       >
@@ -292,7 +292,7 @@ const Home = () => {
                     ))
                   : trendingMarkets.map((market, i) => (
                       <div
-                        key={market.id}
+                        key={market.marketId}
                         className="stagger-in"
                         style={{ animationDelay: `${i * 60}ms` }}
                       >

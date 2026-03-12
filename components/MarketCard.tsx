@@ -1,14 +1,14 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { TrendingUp, Users, Clock, ArrowUpRight } from 'lucide-react';
-import { Market } from '@/lib/store';
+import type { DisplayMarket } from '@/lib/blockchain/markets';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
 interface MarketCardProps {
-  market: Market;
+  market: DisplayMarket;
   featured?: boolean;
   compact?: boolean;
 }
@@ -26,7 +26,7 @@ export const MarketCard = ({ market, featured = false, compact = false }: Market
   // Compact variant for horizontal lists
   if (compact) {
     return (
-      <Link href={`/market/${market.id}`} className="block group">
+      <Link href={`/market/${market.marketId}`} className="block group">
         <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-card border border-border/40 hover:border-border hover:bg-muted/30 transition-all duration-200">
           <div className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-muted">
             <img src={market.image} alt="" className="w-full h-full object-cover opacity-90" />
@@ -58,7 +58,7 @@ export const MarketCard = ({ market, featured = false, compact = false }: Market
   }
 
   return (
-    <Link href={`/market/${market.id}`} className="block group h-full">
+    <Link href={`/market/${market.marketId}`} className="block group h-full">
       <Card 
         variant={featured ? "featured" : "interactive"}
         className={cn(
