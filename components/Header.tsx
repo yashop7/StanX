@@ -3,18 +3,16 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { 
-  TrendingUp, 
   Menu, 
   User, 
   Wallet, 
   Settings, 
-  LogOut,
   ChevronDown,
   BarChart3,
   History,
-  Plus
+  Plus,
+  TrendingUp
 } from 'lucide-react';
-import { ThemeToggle } from '@/components/ThemeToggle';
 import { WalletButton } from '@/components/WalletButton';
 import {
   DropdownMenu,
@@ -24,173 +22,161 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { cn } from '@/lib/utils';
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useWalletSession } from '@solana/react-hooks';
 import { useWalletBalance } from '@/hooks/use-wallet-balance';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 import { USDC_FAUCET_URL } from '@/lib/constants';
-import { Droplets, Moon, Sun } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { Droplets } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import { cn } from '@/lib/utils';
 
 export const Header = () => {
   const wallet = useWalletSession();
   const { balance, loading } = useWalletBalance();
   const { usdcBalance, loading: usdcLoading } = useUsdcBalance();
-  const { theme, setTheme } = useTheme();
   const isLoggedIn = !!wallet;
+  const pathname = usePathname();
 
-  const shortenAddress = (address: string) => {
-    return `${address.slice(0, 4)}...${address.slice(-4)}`;
-  };
+  const shortenAddress = (address: string) =>
+    `${address.slice(0, 4)}...${address.slice(-4)}`;
+
+  const navLinks = [
+    { href: '/markets', label: 'Markets' },
+    { href: '/portfolio', label: 'Portfolio' },
+  ];
 
   return (
-    <header className="sticky top-0 z-50 w-full navbar-blur border-b border-border/40">
-      <div className="max-w-[1400px] mx-auto">
-        <nav>
-          <div className="flex h-14 items-center justify-between px-4 lg:px-6">
-            <div className="flex items-center gap-8">
-              <Link href="/" className="flex items-center gap-2.5 font-bold text-lg group">
-                <div className="p-1.5 rounded-lg bg-primary/10 group-hover:bg-primary/15 transition-colors">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                </div>
-                <span className="tracking-tight">PredictX</span>
-              </Link>
-              
-              <nav className="hidden md:flex items-center gap-1">
-                <Link 
-                  href="/markets" 
-                  className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground rounded-lg transition-colors hover:bg-muted/50"
-                >
-                  Markets
-                </Link>
-                <Link 
-                  href="/portfolio" 
-                  className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground rounded-lg transition-colors hover:bg-muted/50"
-                >
-                  Portfolio
-                </Link>
-              </nav>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {isLoggedIn ? (
-                <>
-                  <Link href="/create-market">
-                    <Button size="sm" variant="outline" className="rounded-lg border border-success/30 bg-success/5 hover:bg-success/10 transition-colors text-success">
-                      <Plus className="h-4 w-4" />
-                      <span className="text-sm font-medium">Create</span>
-                    </Button>
-                  </Link>
-
-                  {balance !== null && (
-                    <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 surface-input rounded-lg">
-                      <Wallet className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm font-semibold tabular-nums">
-                        {loading ? "..." : `${balance.toFixed(4)} SOL`}
-                      </span>
-                    </div>
-                  )}
-
-                  {usdcBalance !== null && (
-                    <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 surface-input rounded-lg">
-                      <img
-                        src="/usdc.webp"
-                        alt="USDC"
-                        className="h-4 w-4"
-                      />
-                      <span className="text-sm font-semibold tabular-nums">
-                        {usdcLoading ? "..." : usdcBalance.toFixed(2)}
-                      </span>
-                      {usdcBalance === 0 && (
-                        <button
-                          onClick={() => window.open(USDC_FAUCET_URL, '_blank')}
-                          title="Get free devnet USDC from Circle Faucet"
-                          className="ml-0.5 text-blue-400 hover:text-blue-300 transition-colors"
-                        >
-                          <Droplets className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  )}
-
-                  <WalletButton />
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="gap-2 px-2 hover:bg-muted/50">
-                        <Avatar className="h-7 w-7 ring-2 ring-border/50">
-                          <AvatarFallback className="text-xs bg-linear-to-br from-primary/20 to-primary/10">
-                            {wallet ? shortenAddress(wallet.account.address).slice(0, 2).toUpperCase() : 'U'}
-                          </AvatarFallback>
-                        </Avatar>
-                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground hidden sm:block" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56 glass-card border-border/40">
-                      <DropdownMenuLabel className="font-normal">
-                        <div className="flex flex-col space-y-1">
-                          <p className="text-sm font-medium">Wallet</p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {wallet ? shortenAddress(wallet.account.address) : 'Not connected'}
-                          </p>
-                        </div>
-                      </DropdownMenuLabel>
-                      <DropdownMenuSeparator className="bg-border/50" />
-                      <DropdownMenuItem asChild>
-                        <Link href="/portfolio" className="flex items-center cursor-pointer">
-                          <BarChart3 className="mr-2 h-4 w-4" />
-                          Portfolio
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/account" className="flex items-center cursor-pointer">
-                          <User className="mr-2 h-4 w-4" />
-                          Account
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href="/create-market" className="flex items-center cursor-pointer">
-                          <Plus className="mr-2 h-4 w-4" />
-                          Create Market
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <History className="mr-2 h-4 w-4" />
-                        Trade History
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-border/50" />
-                      <DropdownMenuItem>
-                        <Settings className="mr-2 h-4 w-4" />
-                        Settings
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator className="bg-border/50" />
-                      <DropdownMenuItem onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="cursor-pointer justify-between">
-                        <span className="flex items-center">
-                          {theme === 'dark' ? (
-                            <Sun className="mr-2 h-4 w-4" />
-                          ) : (
-                            <Moon className="mr-2 h-4 w-4" />
-                          )}
-                          {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-                        </span>
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </>
-              ) : (
-                <>
-                  <ThemeToggle />
-                  <WalletButton />
-                </>
-              )}
-              
-              <Button variant="ghost" size="icon" className="md:hidden h-8 w-8 hover-scale">
-                <Menu className="h-4 w-4" />
-              </Button>
-            </div>
+    <header className="sticky top-0 z-50 w-full navbar-blur border-b border-border">
+      <div className="max-w-[1400px] mx-auto flex h-[52px] items-center justify-between px-4 lg:px-6">
+        
+        {/* Logo */}
+        <Link href="/" className="flex items-center gap-2 group shrink-0">
+          <div className="w-6 h-6 rounded-md bg-foreground flex items-center justify-center">
+            <TrendingUp className="h-3.5 w-3.5 text-background" />
           </div>
+          <span className="font-semibold text-sm tracking-tight text-foreground">PredictX</span>
+        </Link>
+
+        {/* Navigation */}
+        <nav className="hidden md:flex items-center gap-0.5 absolute left-1/2 -translate-x-1/2">
+          {navLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={cn(
+                "px-3 py-1.5 rounded-md text-sm font-medium transition-colors duration-150",
+                pathname === link.href
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {link.label}
+            </Link>
+          ))}
         </nav>
+
+        {/* Right side */}
+        <div className="flex items-center gap-2">
+          {isLoggedIn ? (
+            <>
+              {/* USDC balance chip */}
+              {usdcBalance !== null && (
+                <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/50 border border-border text-xs font-medium tabular-nums text-muted-foreground">
+                  <img src="/usdc.webp" alt="USDC" className="h-3.5 w-3.5" />
+                  <span>{usdcLoading ? '…' : `$${usdcBalance.toFixed(2)}`}</span>
+                  {usdcBalance === 0 && (
+                    <button
+                      onClick={() => window.open(USDC_FAUCET_URL, '_blank')}
+                      title="Get free devnet USDC"
+                      className="text-info hover:text-info/80 transition-colors"
+                    >
+                      <Droplets className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* SOL balance chip */}
+              {balance !== null && (
+                <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-muted/50 border border-border text-xs font-medium tabular-nums text-muted-foreground">
+                  <Wallet className="h-3.5 w-3.5" />
+                  <span>{loading ? '…' : `${balance.toFixed(3)} SOL`}</span>
+                </div>
+              )}
+
+              <Link href="/create-market">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-3 text-xs font-medium border-border bg-transparent hover:bg-muted/60 text-foreground gap-1.5"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Create
+                </Button>
+              </Link>
+
+              <WalletButton />
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 px-1.5 hover:bg-muted/60 gap-1.5">
+                    <Avatar className="h-5 w-5">
+                      <AvatarFallback className="text-[10px] font-semibold bg-muted border border-border">
+                        {wallet ? wallet.account.address.slice(0, 2).toUpperCase() : 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52 border-border bg-card">
+                  <DropdownMenuLabel className="font-normal py-2">
+                    <p className="text-xs font-medium text-foreground">Wallet</p>
+                    <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                      {wallet ? shortenAddress(wallet.account.address) : 'Not connected'}
+                    </p>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/portfolio" className="flex items-center gap-2 text-sm">
+                      <BarChart3 className="h-3.5 w-3.5" />
+                      Portfolio
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/account" className="flex items-center gap-2 text-sm">
+                      <User className="h-3.5 w-3.5" />
+                      Account
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/create-market" className="flex items-center gap-2 text-sm">
+                      <Plus className="h-3.5 w-3.5" />
+                      Create Market
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="flex items-center gap-2 text-sm">
+                    <History className="h-3.5 w-3.5" />
+                    Trade History
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="flex items-center gap-2 text-sm">
+                    <Settings className="h-3.5 w-3.5" />
+                    Settings
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          ) : (
+            <>
+              <WalletButton />
+            </>
+          )}
+
+          <Button variant="ghost" size="icon" className="md:hidden h-7 w-7 hover:bg-muted/60">
+            <Menu className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </header>
   );

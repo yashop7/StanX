@@ -43,13 +43,26 @@ export const TradingPanelNew = ({ marketId, yesPrice, noPrice, collateralMint, o
   const { send, isSending } = useSendTransaction();
 
   const currentPrice = tokenType === 'yes' ? yesPrice : noPrice;
-  const priceForCalc = orderType === 'limit' && limitPrice ? parseFloat(limitPrice) / 100 : currentPrice;
+  const limitPriceNum = parseFloat(limitPrice) || 0;
+  const limitPriceFrac = limitPriceNum / 100; // cents → fraction (e.g. 50 → 0.50)
   const amountNum = parseFloat(amount) || 0;
-  // Buy: amount is USDC → shares = USDC / price
-  // Sell: amount is shares → USDC received = shares * price
-  const shares = action === 'buy' ? (amountNum / priceForCalc) : amountNum;
-  const potentialWin = action === 'buy' ? shares * 1 : amountNum * priceForCalc;
-  const profit = action === 'buy' ? (potentialWin - amountNum) : (potentialWin - amountNum * priceForCalc);
+
+  // ── Display calculations ──────────────────────────────────────────────────
+  // Market BUY:  user enters USDC  → shares = USDC / currentPrice
+  // Market SELL: user enters shares → USDC received = shares * currentPrice
+  // Limit  BUY:  user enters shares directly → USDC cost = shares * limitPrice
+  // Limit  SELL: user enters shares directly → USDC received = shares * limitPrice
+  const isLimit = orderType === 'limit';
+  const shares = isLimit
+    ? amountNum                                           // limit: user enters token count
+    : (action === 'buy' ? amountNum / currentPrice : amountNum); // market: derive from USDC
+  const usdcCost = isLimit
+    ? amountNum * limitPriceFrac                          // limit buy: cost = shares × price
+    : amountNum;                                          // market buy: cost = entered USDC
+  const potentialWin = shares * 1;                       // winning shares pay $1 each
+  const profit = action === 'buy'
+    ? potentialWin - usdcCost
+    : amountNum * (isLimit ? limitPriceFrac : currentPrice) - amountNum * currentPrice;
 
   const handleTrade = async () => {
     const amountInput = parseFloat(amount);
@@ -65,9 +78,15 @@ export const TradingPanelNew = ({ marketId, yesPrice, noPrice, collateralMint, o
     }
 
     // For buy: check USDC balance. For sell: check token balance.
-    if (action === 'buy' && amountInput > balance) {
+    // Limit buy: amountInput = shares, so USDC needed = shares × limitPrice
+    const isLimitOrder = orderType === 'limit';
+    const limitPriceNumForCheck = parseFloat(limitPrice) || 0;
+    const usdcNeededForBuy = isLimitOrder
+      ? amountInput * (limitPriceNumForCheck / 100)
+      : amountInput;
+    if (action === 'buy' && usdcNeededForBuy > balance) {
       toast.error('Insufficient USDC balance.', {
-        description: `You have $${balance.toLocaleString()} available.`,
+        description: `You need $${usdcNeededForBuy.toFixed(2)} but have $${balance.toLocaleString()}.`,
       });
       return;
     }
@@ -85,26 +104,25 @@ export const TradingPanelNew = ({ marketId, yesPrice, noPrice, collateralMint, o
 
     try {
       if (orderType === 'limit') {
-        const limitPriceNum = parseFloat(limitPrice);
         if (!limitPrice || isNaN(limitPriceNum) || limitPriceNum <= 0 || limitPriceNum > 99) {
           toast.error('Please enter a valid limit price between 1¢ and 99¢.');
           return;
         }
-        // Buy: quantity = USDC / price in shares | Sell: quantity = tokens entered
-        const sharesNum = action === 'buy'
-          ? Math.round(amountInput / (limitPriceNum / 100))
-          : Math.round(amountInput);
+        // For limit orders the `amount` field is always token count (shares), not USDC.
+        // quantity = whole token count (NOT micro-tokens).
+        // price   = micro-USDC per token  (50¢ → 50 × 10_000 = 500_000)
+        // On-chain: collateral_locked = quantity × price  e.g. 2 × 500_000 = 1_000_000 µUSDC = $1
         const ix = await buildLimitOrderInstruction({
           userSigner: signer,
           marketId: numericMarketId,
           tokenType: outcomeToken,
           orderSide,
-          quantity: BigInt(sharesNum),
-          price: BigInt(Math.round(limitPriceNum * 10_000)),
+          quantity: BigInt(Math.round(amountInput)),               // whole tokens
+          price:    BigInt(Math.round(limitPriceNum * 10_000)),    // 50¢ → 500_000
         });
         const sig = await send({ instructions: [ix], authority: signer });
         toast.success(`Limit ${action} order placed!`, {
-          description: `${sharesNum} ${outcomeToken} shares @ ${limitPriceNum}¢ — tx: ${String(sig).slice(0, 8)}…`,
+          description: `${amountInput.toFixed(2)} ${outcomeToken} shares @ ${limitPriceNum}¢ — tx: ${String(sig).slice(0, 8)}…`,
         });
       } else {
         // Market order
@@ -182,210 +200,245 @@ export const TradingPanelNew = ({ marketId, yesPrice, noPrice, collateralMint, o
   return (
     <div className="panel-card overflow-hidden">
       {/* Header */}
-      <div className="panel-header">
-        <h3 className="text-sm font-semibold text-foreground">Place Order</h3>
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+        <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Place Order</h3>
+        {/* price pills */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-success/10 text-success">
+            Y {(yesPrice * 100).toFixed(0)}¢
+          </span>
+          <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-danger/10 text-danger">
+            N {(noPrice * 100).toFixed(0)}¢
+          </span>
+        </div>
       </div>
 
-      <div className="p-5 space-y-5">
-        {/* Segmented Control - Pill-shaped toggle matching chart filters */}
-        <div className="p-1 bg-muted/20 dark:bg-muted/10 rounded-xl border border-border/20 dark:border-border/10">
-          <div className="grid grid-cols-4 gap-0.5">
-            {orderTypes.map((type) => (
-              <button
-                key={type.value}
-                onClick={() => setOrderType(type.value)}
-                className={cn(
-                  "relative flex items-center justify-center gap-1 px-2 py-2 rounded-lg text-[11px] font-medium transition-all duration-200",
-                  orderType === type.value
-                    ? "bg-background text-foreground shadow-sm ring-1 ring-border/50"
-                    : "text-muted-foreground hover:text-foreground/80"
-                )}
-              >
-                <span>{type.icon}</span>
-                <span>{type.label}</span>
-              </button>
-            ))}
-          </div>
+      <div className="p-4 space-y-4">
+        {/* Tab bar — underline style */}
+        <div className="flex border-b border-border">
+          {orderTypes.map((type) => (
+            <button
+              key={type.value}
+              onClick={() => setOrderType(type.value)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-all duration-150 border-b-2 -mb-px",
+                orderType === type.value
+                  ? "border-foreground text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <span>{type.icon}</span>
+              <span>{type.label}</span>
+            </button>
+          ))}
         </div>
 
         {/* Market & Limit Order Content */}
         {(orderType === 'market' || orderType === 'limit') && (
           <>
-            {/* Row 1: BUY / SELL */}
-            <div className="grid grid-cols-2 gap-2">
+            {/* BUY / SELL toggle */}
+            <div className="p-1 rounded-lg bg-muted/40 border border-border flex">
               <button
                 onClick={() => setAction('buy')}
                 className={cn(
-                  "relative py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 overflow-hidden",
+                  "flex-1 py-2 rounded-md text-xs font-semibold transition-all duration-150",
                   action === 'buy'
-                    ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"
-                    : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-success text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {action === 'buy' && (
-                  <div className="absolute inset-0 bg-linear-to-t from-emerald-600/40 to-transparent" />
-                )}
-                <span className="relative z-10">Buy</span>
+                Buy
               </button>
               <button
                 onClick={() => setAction('sell')}
                 className={cn(
-                  "relative py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 overflow-hidden",
+                  "flex-1 py-2 rounded-md text-xs font-semibold transition-all duration-150",
                   action === 'sell'
-                    ? "bg-red-500 text-white shadow-lg shadow-red-500/20"
-                    : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-danger text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {action === 'sell' && (
-                  <div className="absolute inset-0 bg-linear-to-t from-red-600/40 to-transparent" />
-                )}
-                <span className="relative z-10">Sell</span>
+                Sell
               </button>
             </div>
 
-            {/* Row 2: YES / NO token selector */}
+            {/* YES / NO selector */}
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => setTokenType('yes')}
                 className={cn(
-                  "py-2 rounded-xl text-xs font-semibold border transition-all duration-200",
+                  "py-3 rounded-lg border text-left px-3.5 transition-all duration-150",
                   tokenType === 'yes'
-                    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/40"
-                    : "bg-muted/30 text-muted-foreground border-border/20 hover:border-emerald-500/30 hover:text-emerald-400"
+                    ? "bg-success/8 border-success/30"
+                    : "bg-muted/20 border-border hover:border-success/20"
                 )}
               >
-                YES &bull; {(yesPrice * 100).toFixed(1)}¢
+                <div className={cn("text-[10px] font-bold uppercase tracking-wider mb-0.5", tokenType === 'yes' ? "text-success" : "text-muted-foreground")}>YES</div>
+                <div className="text-sm font-bold font-mono">{(yesPrice * 100).toFixed(1)}¢</div>
                 {action === 'sell' && yesBalance !== null && (
-                  <span className="block text-[10px] opacity-70 mt-0.5">{yesBalance.toLocaleString()} held</span>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">{yesBalance.toLocaleString()} held</div>
                 )}
               </button>
               <button
                 onClick={() => setTokenType('no')}
                 className={cn(
-                  "py-2 rounded-xl text-xs font-semibold border transition-all duration-200",
+                  "py-3 rounded-lg border text-left px-3.5 transition-all duration-150",
                   tokenType === 'no'
-                    ? "bg-red-500/15 text-red-400 border-red-500/40"
-                    : "bg-muted/30 text-muted-foreground border-border/20 hover:border-red-500/30 hover:text-red-400"
+                    ? "bg-danger/8 border-danger/30"
+                    : "bg-muted/20 border-border hover:border-danger/20"
                 )}
               >
-                NO &bull; {(noPrice * 100).toFixed(1)}¢
+                <div className={cn("text-[10px] font-bold uppercase tracking-wider mb-0.5", tokenType === 'no' ? "text-danger" : "text-muted-foreground")}>NO</div>
+                <div className="text-sm font-bold font-mono">{(noPrice * 100).toFixed(1)}¢</div>
                 {action === 'sell' && noBalance !== null && (
-                  <span className="block text-[10px] opacity-70 mt-0.5">{noBalance.toLocaleString()} held</span>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">{noBalance.toLocaleString()} held</div>
                 )}
               </button>
             </div>
 
-            {/* Limit Price Input (only for limit orders) */}
+            {/* Limit Price (limit orders only) */}
             {orderType === 'limit' && (
-              <div className="space-y-2">
-                <Label htmlFor="limit-price" className="text-xs text-muted-foreground font-medium">
-                  Limit Price (¢)
-                </Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="limit-price" className="text-[11px] text-muted-foreground font-medium">Limit Price (¢)</Label>
                 <Input
                   id="limit-price"
                   type="number"
-                  placeholder="0.00"
+                  placeholder="50"
                   value={limitPrice}
                   onChange={(e) => setLimitPrice(e.target.value)}
-                  className="h-12 bg-muted/20 dark:bg-muted/10 border-border/30 dark:border-border/20 rounded-xl font-mono text-base focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all"
+                  className="h-10 bg-muted/30 border-border rounded-lg font-mono text-sm"
                 />
               </div>
             )}
 
             {/* Amount Input */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="amount" className="text-xs text-muted-foreground font-medium">
-                  {action === 'buy' ? 'Amount (USDC)' : `Tokens to Sell`}
+                <Label htmlFor="amount" className="text-[11px] text-muted-foreground font-medium">
+                  {isLimit
+                    ? (action === 'buy' ? 'Shares to buy' : 'Shares to sell')
+                    : (action === 'buy' ? 'Amount (USDC)' : 'Shares to sell')
+                  }
                 </Label>
                 {action === 'sell' && (
                   <button
                     onClick={() => setAmount(String(tokenBalance))}
-                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
                   >
-                    Max: {tokenBalance.toLocaleString()} {tokenType.toUpperCase()}
+                    Max {tokenBalance.toLocaleString()}
                   </button>
                 )}
               </div>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">$</span>
+                {/* Show $ prefix only for market buy (USDC input) */}
+                {(!isLimit && action === 'buy') && (
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium select-none">$</span>
+                )}
                 <Input
                   id="amount"
                   type="number"
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="pl-8 h-12 bg-muted/20 dark:bg-muted/10 border-border/30 dark:border-border/20 rounded-xl font-mono text-base focus:border-primary/50 focus:ring-2 focus:ring-primary/20 transition-all"
+                  className={cn(
+                    "h-11 bg-muted/30 border-border rounded-lg font-mono text-sm",
+                    (!isLimit && action === 'buy') ? 'pl-7' : 'pl-3.5'
+                  )}
                 />
               </div>
-              {/* Quick Amount Buttons */}
-              <div className="grid grid-cols-4 gap-1.5 pt-1">
-                {['10', '25', '50', '100'].map((val) => (
+
+              {/* For limit buy: show derived USDC cost */}
+              {isLimit && action === 'buy' && amountNum > 0 && limitPriceNum > 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Cost:{' '}
+                  <span className="font-mono font-medium text-foreground">
+                    ${usdcCost.toFixed(2)} USDC
+                  </span>
+                </p>
+              )}
+
+              <div className="grid grid-cols-4 gap-1.5">
+                {(isLimit ? ['1', '5', '10', '25'] : ['10', '25', '50', '100']).map((val) => (
                   <button
                     key={val}
                     onClick={() => setAmount(val)}
-                    className="py-2 text-xs font-medium text-muted-foreground bg-muted/20 dark:bg-muted/10 border border-border/20 dark:border-border/10 rounded-lg hover:bg-emerald-500/20 hover:text-emerald-500 dark:hover:text-emerald-400 hover:border-emerald-500/30 transition-all duration-200"
+                    className={cn(
+                      "py-1.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
+                      amount === val
+                        ? (action === 'buy' ? 'border-success/50 bg-success/10 text-success' : 'border-danger/50 bg-danger/10 text-danger')
+                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                    )}
                   >
-                    ${val}
+                    {isLimit ? val : `$${val}`}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Order Summary */}
-            <div className="space-y-2.5 p-4 bg-muted/15 dark:bg-muted/10 rounded-xl border border-border/20 dark:border-border/10">
-              <div className="flex justify-between text-xs">
-                <span className="text-muted-foreground">{action === 'buy' ? 'Est. Shares' : 'USDC Received'}</span>
-                <span className="font-mono font-medium">{action === 'buy' ? shares.toFixed(2) : potentialWin.toFixed(2)}</span>
+            {/* Order receipt */}
+            <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
+              {/* Row 1: shares / USDC cost */}
+              <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
+                <span className="text-muted-foreground">
+                  {action === 'buy' ? 'Shares' : 'Shares sold'}
+                </span>
+                <span className="font-mono font-medium">
+                  {shares > 0 ? shares.toFixed(4) : '—'} {tokenType.toUpperCase()}
+                </span>
               </div>
-              <div className="flex justify-between text-xs">
+
+              {/* Row 2: USDC spent / received */}
+              <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
+                <span className="text-muted-foreground">
+                  {action === 'buy' ? 'USDC spent' : 'USDC received'}
+                </span>
+                <span className="font-mono font-medium">
+                  ${action === 'buy' ? usdcCost.toFixed(2) : (amountNum * (isLimit ? limitPriceFrac : currentPrice)).toFixed(2)}
+                </span>
+              </div>
+
+              {/* Row 3: max payout */}
+              <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger className="flex items-center gap-1 text-muted-foreground">
-                      {action === 'buy' ? 'Potential Return' : 'Est. Return'}
-                      <Info className="h-3 w-3" />
+                      Max payout <Info className="h-3 w-3" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="text-xs">{action === 'buy' ? `If ${tokenType.toUpperCase()} wins, each share pays $1` : `Selling at current ${tokenType.toUpperCase()} price`}</p>
+                      <p className="text-xs">{`${tokenType.toUpperCase()} shares pay $1 each on correct resolution`}</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                <span className={cn(
-                  "font-mono font-medium",
-                  action === 'buy' ? "text-emerald-400" : "text-red-400"
-                )}>${action === 'buy' ? potentialWin.toFixed(2) : potentialWin.toFixed(2)}</span>
+                <span className="font-mono font-medium">${potentialWin.toFixed(2)}</span>
               </div>
-              <Separator className="my-2 bg-border/20 dark:bg-border/10" />
-              <div className="flex justify-between">
-                <span className="text-xs text-muted-foreground">{action === 'buy' ? 'Profit if correct' : 'Gain / Loss'}</span>
+
+              {/* Row 4: profit */}
+              <div className="flex justify-between items-center px-3.5 py-2.5">
+                <span className="text-xs text-muted-foreground">Profit if correct</span>
                 <span className={cn(
-                  "font-mono font-semibold",
-                  profit >= 0 ? "text-emerald-400" : "text-red-400"
+                  "text-sm font-bold font-mono",
+                  profit >= 0 ? "text-success" : "text-danger"
                 )}>{profit >= 0 ? '+' : ''}${profit.toFixed(2)}</span>
               </div>
             </div>
 
-            {/* Trade Button with Glow */}
+            {/* CTA */}
             <button
               onClick={handleTrade}
               disabled={!amount || parseFloat(amount) <= 0 || isSending}
               className={cn(
-                "relative w-full py-3.5 rounded-xl font-semibold text-white transition-all duration-200 overflow-hidden",
-                "disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none",
+                "w-full py-3 rounded-lg font-semibold text-sm text-white transition-all duration-150",
+                "disabled:opacity-40 disabled:cursor-not-allowed",
                 action === 'buy'
-                  ? "bg-emerald-500 hover:bg-emerald-400 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40"
-                  : "bg-red-500 hover:bg-red-400 shadow-lg shadow-red-500/25 hover:shadow-red-500/40"
+                  ? "bg-success hover:brightness-110 shadow-sm shadow-success/20"
+                  : "bg-danger hover:brightness-110 shadow-sm shadow-danger/20"
               )}
             >
-              <div className={cn(
-                "absolute inset-0 bg-linear-to-t to-transparent",
-                action === 'buy' ? "from-emerald-600/40" : "from-red-600/40"
-              )} />
-              <span className="relative z-10 flex items-center justify-center gap-2">
+              <span className="flex items-center justify-center gap-2">
                 {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
                 {isSending
                   ? (action === 'buy' ? 'Buying…' : 'Selling…')
-                  : `${action === 'buy' ? 'Buy' : 'Sell'} ${tokenType.toUpperCase()}${amount ? ` • ${action === 'buy' ? '$' : ''}${amount}${action === 'sell' ? ' tokens' : ''}` : ''}`
+                  : `${action === 'buy' ? 'Buy' : 'Sell'} ${tokenType.toUpperCase()}${amount ? ` — ${action === 'buy' ? '$' + amount : amount + ' tokens'}` : ''}`
                 }
               </span>
             </button>
@@ -525,14 +578,12 @@ export const TradingPanelNew = ({ marketId, yesPrice, noPrice, collateralMint, o
           </div>
         )}
 
-        <Separator className="bg-border/20 dark:bg-border/10" />
-
-        {/* Balance */}
-        <div className="flex justify-between text-xs">
-          <span className="text-muted-foreground">
-            {action === 'sell' ? `${tokenType.toUpperCase()} Balance` : 'USDC Balance'}
+        {/* Balance strip */}
+        <div className="border-t border-border px-4 py-3 flex items-center justify-between bg-muted/10">
+          <span className="text-[11px] text-muted-foreground">
+            {action === 'sell' ? `${tokenType.toUpperCase()} balance` : 'USDC balance'}
           </span>
-          <span className="font-mono font-medium">
+          <span className="text-xs font-mono font-semibold">
             {action === 'sell'
               ? `${tokenBalance.toLocaleString()} ${tokenType.toUpperCase()}`
               : `$${balance.toLocaleString()}`}
