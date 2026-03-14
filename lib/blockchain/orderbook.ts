@@ -9,8 +9,8 @@
  *   500_000 micro-USDC  →  0.5 USDC  →  50¢  →  displayDecimal = 0.50
  *
  * Quantity encoding assumption:
- *   The on-chain `quantity` and `filledquantity` fields are also in micro-USDC
- *   denominated shares.  1_000_000 units = 1 share.
+ *   The on-chain `quantity` and `filledquantity` fields are token base units.
+ *   1_000_000 units = 1 share for the current 6-decimal outcome token mint.
  */
 
 import {
@@ -33,9 +33,15 @@ import { rpc } from "./client";
 const PRICE_SCALE = 1_000_000;
 
 /**
- * Quantities are whole integer shares (e.g. "05" = 5 shares), no scaling needed.
+ * Outcome tokens have 6 decimal places (same as USDC).
+ * 1_000_000 base units = 1 display share.
  */
-const QTY_SCALE = 1;
+const QTY_SCALE = 1_000_000;
+
+/**
+ * Hide fully-filled or empty orders that would render as 0 in the UI.
+ */
+const MIN_VISIBLE_SHARES = 0.000001;
 
 // ── PDA derivation ─────────────────────────────────────────────────────────────
 
@@ -78,6 +84,8 @@ export interface ChainOrderBook {
   bids: ChainLevel[];
 }
 
+export type OutcomeToken = "yes" | "no";
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function toDecimalPrice(price: bigint): number {
@@ -101,7 +109,7 @@ function aggregateByPrice(
 
   for (const order of orders) {
     const shares = remainingShares(order.quantity, order.filledquantity);
-    if (shares <= 0) continue; // fully filled — skip
+    if (shares <= 0 || shares < MIN_VISIBLE_SHARES) continue;
 
     // Round to 4 decimal places so floating-point drift doesn't create phantom levels
     const priceKey = Math.round(toDecimalPrice(order.price) * 10_000) / 10_000;
@@ -150,6 +158,7 @@ function addCumulativeTotals(levels: ChainLevel[]): void {
  */
 export async function fetchOnChainOrderBook(
   marketId: number,
+  outcomeToken: OutcomeToken = "yes",
   currentUserKey?: string,
 ): Promise<ChainOrderBook | null> {
   const pdaAddress = await deriveOrderBookPDA(marketId);
@@ -161,14 +170,17 @@ export async function fetchOnChainOrderBook(
 
   const book = maybeAccount.data;
 
-  // Asks: people selling YES tokens (red / sell side)
-  const asks = aggregateByPrice(book.yesSellOrders, currentUserKey).sort(
+  const sellOrders = outcomeToken === "yes" ? book.yesSellOrders : book.noSellOrders;
+  const buyOrders = outcomeToken === "yes" ? book.yesBuyOrders : book.noBuyOrders;
+
+  // Asks: people selling selected outcome tokens (red / sell side)
+  const asks = aggregateByPrice(sellOrders, currentUserKey).sort(
     (a, b) => a.price - b.price, // lowest ask first → best ask nearest the mid
   );
   addCumulativeTotals(asks);
 
-  // Bids: people buying YES tokens (green / buy side)
-  const bids = aggregateByPrice(book.yesBuyOrders, currentUserKey).sort(
+  // Bids: people buying selected outcome tokens (green / buy side)
+  const bids = aggregateByPrice(buyOrders, currentUserKey).sort(
     (a, b) => b.price - a.price, // highest bid first → best bid nearest the mid
   );
   addCumulativeTotals(bids);

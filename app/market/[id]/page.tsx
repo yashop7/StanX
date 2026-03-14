@@ -29,6 +29,7 @@ const MarketDetail = () => {
   const [allMarkets, setAllMarkets] = useState<DisplayMarket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedTokenType, setSelectedTokenType] = useState<'yes' | 'no'>('yes');
 
   const load = useCallback(async () => {
     if (isNaN(marketId)) {
@@ -191,6 +192,7 @@ const MarketDetail = () => {
                 marketId={marketIdStr}
                 yesPrice={market.yesPrice}
                 noPrice={market.noPrice}
+                selectedTokenType={selectedTokenType}
               />
 
               {/* Tabs */}
@@ -239,6 +241,8 @@ const MarketDetail = () => {
                   collateralMint={market.collateralMint}
                   outcomeYesMint={market.outcomeYesMint}
                   outcomeNoMint={market.outcomeNoMint}
+                  selectedTokenType={selectedTokenType}
+                  onTokenTypeChange={setSelectedTokenType}
                 />
 
                 {/* User Position Stats */}

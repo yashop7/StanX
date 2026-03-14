@@ -18,7 +18,7 @@ const USER_STATS_SEED = new Uint8Array([
   117, 115, 101, 114, 95, 115, 116, 97, 116, 115,
 ]);
 
-const PRICE_SCALE = 1_000_000; // micro-USDC per USDC
+const PRICE_SCALE = 1_000_000; // micro-USDC per USDC / token base units per token
 
 export interface UserStatsData {
   claimableYes: number;   // tokens (human-readable)
@@ -30,7 +30,7 @@ export interface UserStatsData {
   rewardClaimed: boolean;
 }
 
-export function useUserStats(marketId: number) {
+export function useUserStats(marketId: number, refreshTrigger?: number) {
   const session = useWalletSession();
   const [stats, setStats] = useState<UserStatsData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -63,10 +63,10 @@ export function useUserStats(marketId: number) {
         if (account.exists) {
           const d = account.data;
           setStats({
-            claimableYes:       Number(d.claimableYes),
-            lockedYes:          Number(d.lockedYes),
-            claimableNo:        Number(d.claimableNo),
-            lockedNo:           Number(d.lockedNo),
+            claimableYes:        Number(d.claimableYes) / PRICE_SCALE,
+            lockedYes:           Number(d.lockedYes) / PRICE_SCALE,
+            claimableNo:         Number(d.claimableNo) / PRICE_SCALE,
+            lockedNo:            Number(d.lockedNo) / PRICE_SCALE,
             claimableCollateral: Number(d.claimableCollateral) / PRICE_SCALE,
             lockedCollateral:    Number(d.lockedCollateral) / PRICE_SCALE,
             rewardClaimed:       d.rewardClaimed,
@@ -83,7 +83,7 @@ export function useUserStats(marketId: number) {
 
     fetchStats();
     return () => { cancelled = true; };
-  }, [session, marketId]);
+  }, [session, marketId, refreshTrigger]);
 
   return { stats, isLoading };
 }

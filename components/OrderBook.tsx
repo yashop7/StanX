@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { RefreshCw } from 'lucide-react';
 import { fetchOnChainOrderBook } from '@/lib/blockchain/orderbook';
-import type { ChainLevel } from '@/lib/blockchain/orderbook';
+import type { ChainLevel, OutcomeToken } from '@/lib/blockchain/orderbook';
 
 const REFRESH_INTERVAL = 30; // seconds
 
@@ -12,11 +12,12 @@ interface OrderBookProps {
   marketId: string;
   yesPrice: number;
   noPrice: number;
+  selectedTokenType?: OutcomeToken;
 }
 
 type DisplayLevel = ChainLevel;
 
-export const OrderBook = ({ marketId, yesPrice, noPrice }: OrderBookProps) => {
+export const OrderBook = ({ marketId, yesPrice, noPrice, selectedTokenType = 'yes' }: OrderBookProps) => {
 
   const [asks, setAsks] = useState<DisplayLevel[]>([]);
   const [bids, setBids] = useState<DisplayLevel[]>([]);
@@ -26,19 +27,21 @@ export const OrderBook = ({ marketId, yesPrice, noPrice }: OrderBookProps) => {
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  const midPrice = (yesPrice + (1 - noPrice)) / 2;
-  const spread = Math.abs(yesPrice - (1 - noPrice));
+  const selectedPrice = selectedTokenType === 'yes' ? yesPrice : noPrice;
+  const impliedCounterPrice = 1 - selectedPrice;
+  const midPrice = (selectedPrice + impliedCounterPrice) / 2;
+  const spread = Math.abs(selectedPrice - impliedCounterPrice);
   const spreadPercent = (spread / midPrice * 100).toFixed(2);
 
   /** Fetches the on-chain orderbook and merges into sorted bid/ask arrays. */
-  const buildAndSet = useCallback(async (currentYesPrice: number) => {
+  const buildAndSet = useCallback(async () => {
     const numericMarketId = parseInt(marketId, 10);
     if (isNaN(numericMarketId)) return;
 
     setFetchError(null);
 
     try {
-      const chainBook = await fetchOnChainOrderBook(numericMarketId);
+      const chainBook = await fetchOnChainOrderBook(numericMarketId, selectedTokenType);
 
       const askMap = new Map<number, { size: number; isUser: boolean }>();
       const bidMap = new Map<number, { size: number; isUser: boolean }>();
@@ -71,27 +74,27 @@ export const OrderBook = ({ marketId, yesPrice, noPrice }: OrderBookProps) => {
 
     setLastRefreshed(new Date());
     setCountdown(REFRESH_INTERVAL);
-  }, [marketId]);
+  }, [marketId, selectedTokenType]);
 
   const handleRefresh = useCallback((animate = true) => {
     if (animate) setIsRefreshing(true);
-    buildAndSet(yesPrice).finally(() => {
+    buildAndSet().finally(() => {
       if (animate) setIsRefreshing(false);
     });
-  }, [buildAndSet, yesPrice]);
+  }, [buildAndSet]);
 
   // Initial build
   useEffect(() => {
-    buildAndSet(yesPrice);
+    buildAndSet();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [yesPrice]);
+  }, [buildAndSet]);
 
   // Auto-refresh every REFRESH_INTERVAL seconds
   useEffect(() => {
-    const interval = setInterval(() => buildAndSet(yesPrice), REFRESH_INTERVAL * 1000);
+    const interval = setInterval(() => buildAndSet(), REFRESH_INTERVAL * 1000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [yesPrice]);
+  }, [buildAndSet]);
 
   // Countdown ticker
   useEffect(() => {
@@ -111,8 +114,20 @@ export const OrderBook = ({ marketId, yesPrice, noPrice }: OrderBookProps) => {
     <div className="panel-card overflow-hidden">
       {/* Header */}
       <div className="panel-header flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-foreground">Order Book</h3>
+        <h3 className="text-sm font-semibold text-foreground">
+          {selectedTokenType.toUpperCase()} Order Book
+        </h3>
         <div className="flex items-center gap-3">
+          <span
+            className={cn(
+              'text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded',
+              selectedTokenType === 'yes'
+                ? 'bg-success/10 text-success'
+                : 'bg-danger/10 text-danger'
+            )}
+          >
+            {selectedTokenType.toUpperCase()}
+          </span>
           <span className="text-[10px] text-muted-foreground font-mono tabular-nums">
             Refresh in {countdown}s
           </span>
@@ -242,6 +257,20 @@ export const OrderBook = ({ marketId, yesPrice, noPrice }: OrderBookProps) => {
         <span className="text-[10px] text-muted-foreground/50 tabular-nums">
           Auto-refresh in {countdown}s
         </span>
+      </div>
+
+      {/* Info Note */}
+      <div className="px-5 py-3 border-t border-border/20 bg-amber-500/5 dark:bg-amber-500/3">
+        <div className="flex gap-2 items-start">
+          <div className="text-amber-600 dark:text-amber-400/80 mt-0.5 shrink-0">
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <p className="text-[11px] text-amber-700 dark:text-amber-300/70 leading-relaxed">
+            <span className="font-semibold">Note:</span> Your buy and sell orders for the same outcome won't match each other. Orders only match with other traders. Place both sides only if you intend to trade with different counterparties.
+          </p>
+        </div>
       </div>
     </div>
   );

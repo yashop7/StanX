@@ -72,6 +72,10 @@ export const PREDICTION_MARKET_TURBIN3_ERROR__INVALID_MINT = 0x178a; // 6026
 export const PREDICTION_MARKET_TURBIN3_ERROR__SETTLEMENT_DEADLINE_NOT_REACHED = 0x178b; // 6027
 /** NoWinnersInDraw: Market result is a draw; no winners to claim rewards */
 export const PREDICTION_MARKET_TURBIN3_ERROR__NO_WINNERS_IN_DRAW = 0x178c; // 6028
+/** OrderTooSmall: Order quantity is below the minimum allowed (must be >= 1000 base units) */
+export const PREDICTION_MARKET_TURBIN3_ERROR__ORDER_TOO_SMALL = 0x178d; // 6029
+/** OrderFullyFilled: Order is fully filled and cannot be cancelled */
+export const PREDICTION_MARKET_TURBIN3_ERROR__ORDER_FULLY_FILLED = 0x178e; // 6030
 
 export type PredictionMarketTurbin3Error =
   | typeof PREDICTION_MARKET_TURBIN3_ERROR__BUYER_STATS_ACCOUNT_NOT_PROVIDED
@@ -96,9 +100,11 @@ export type PredictionMarketTurbin3Error =
   | typeof PREDICTION_MARKET_TURBIN3_ERROR__NOTHING_TO_CLAIM
   | typeof PREDICTION_MARKET_TURBIN3_ERROR__NO_WINNERS_IN_DRAW
   | typeof PREDICTION_MARKET_TURBIN3_ERROR__ORDER_BOOK_FULL
+  | typeof PREDICTION_MARKET_TURBIN3_ERROR__ORDER_FULLY_FILLED
   | typeof PREDICTION_MARKET_TURBIN3_ERROR__ORDERNOT_FOUND
   | typeof PREDICTION_MARKET_TURBIN3_ERROR__ORDER_PARTIALLY_FILLED
   | typeof PREDICTION_MARKET_TURBIN3_ERROR__ORDERS_STILL_PENDING
+  | typeof PREDICTION_MARKET_TURBIN3_ERROR__ORDER_TOO_SMALL
   | typeof PREDICTION_MARKET_TURBIN3_ERROR__OUTCOME_ACCOUNT_REQUIRED
   | typeof PREDICTION_MARKET_TURBIN3_ERROR__SELLER_STATS_ACCOUNT_NOT_PROVIDED
   | typeof PREDICTION_MARKET_TURBIN3_ERROR__SETTLEMENT_DEADLINE_NOT_REACHED
@@ -131,9 +137,11 @@ if (process.env.NODE_ENV !== "production") {
     [PREDICTION_MARKET_TURBIN3_ERROR__NOTHING_TO_CLAIM]: `No claimable funds available`,
     [PREDICTION_MARKET_TURBIN3_ERROR__NO_WINNERS_IN_DRAW]: `Market result is a draw; no winners to claim rewards`,
     [PREDICTION_MARKET_TURBIN3_ERROR__ORDER_BOOK_FULL]: `OrderBook is full, cannot add more orders to this side`,
+    [PREDICTION_MARKET_TURBIN3_ERROR__ORDER_FULLY_FILLED]: `Order is fully filled and cannot be cancelled`,
     [PREDICTION_MARKET_TURBIN3_ERROR__ORDERNOT_FOUND]: `Order not found`,
     [PREDICTION_MARKET_TURBIN3_ERROR__ORDER_PARTIALLY_FILLED]: `Order is partially filled and cannot be cancelled`,
     [PREDICTION_MARKET_TURBIN3_ERROR__ORDERS_STILL_PENDING]: `Orders still pending, cancel all orders before closing market`,
+    [PREDICTION_MARKET_TURBIN3_ERROR__ORDER_TOO_SMALL]: `Order quantity is below the minimum allowed (must be >= 1000 base units)`,
     [PREDICTION_MARKET_TURBIN3_ERROR__OUTCOME_ACCOUNT_REQUIRED]: `Outcome token account must be provided for SELL orders`,
     [PREDICTION_MARKET_TURBIN3_ERROR__SELLER_STATS_ACCOUNT_NOT_PROVIDED]: `Seller's UserStats account not provided in remaining_accounts`,
     [PREDICTION_MARKET_TURBIN3_ERROR__SETTLEMENT_DEADLINE_NOT_REACHED]: `Settlement deadline has not been reached yet; market is still live`,

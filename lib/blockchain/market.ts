@@ -26,6 +26,8 @@ import {
   getBytesEncoder,
   getU32Encoder,
   getProgramDerivedAddress,
+  AccountRole,
+  type AccountMeta,
   type Address,
   type TransactionSigner,
   type FullySignedTransaction,
@@ -43,6 +45,7 @@ import {
   type Market,
   MARKET_DISCRIMINATOR,
 } from "@/generated/accounts/market";
+import { fetchMaybeOrderBook } from "@/generated/accounts/orderBook";
 import { OrderSide, TokenType } from "@/generated/types";
 import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "@/generated/programs";
 
@@ -59,10 +62,11 @@ const sendAndConfirmTransaction = sendAndConfirmTransactionFactory({
 
 export const PRICE_SCALE = 1_000_000; // 1 USDC = 1_000_000 micro-USDC
 
-const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address;
-const ATA_PROGRAM   = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address;
-const MARKET_SEED   = new Uint8Array([109,97,114,107,101,116]);           // "market"
-const ORDERBOOK_SEED = new Uint8Array([111,114,100,101,114,98,111,111,107]); // "orderbook"
+const TOKEN_PROGRAM  = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" as Address;
+const ATA_PROGRAM    = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL" as Address;
+const MARKET_SEED    = new Uint8Array([109,97,114,107,101,116]);              // "market"
+const ORDERBOOK_SEED = new Uint8Array([111,114,100,101,114,98,111,111,107]);  // "orderbook"
+const USER_STATS_SEED = new Uint8Array([117,115,101,114,95,115,116,97,116,115]); // "user_stats"
 
 async function deriveATA(wallet: Address, mint: Address): Promise<Address> {
   const enc = getAddressEncoder();
@@ -71,6 +75,18 @@ async function deriveATA(wallet: Address, mint: Address): Promise<Address> {
     seeds: [enc.encode(wallet), enc.encode(TOKEN_PROGRAM), enc.encode(mint)],
   });
   return ata;
+}
+
+async function resolveUserTokenAccount(wallet: Address, mint: Address): Promise<Address> {
+  const tokenAccounts = await rpc
+    .getTokenAccountsByOwner(wallet, { mint }, { encoding: "jsonParsed" })
+    .send();
+
+  if (tokenAccounts.value.length > 0) {
+    return tokenAccounts.value[0].pubkey as Address;
+  }
+
+  return deriveATA(wallet, mint);
 }
 
 async function getMarketContext(marketId: number) {
@@ -86,6 +102,59 @@ async function getMarketContext(marketId: number) {
   return { marketPda, orderbookPda, market: data };
 }
 
+async function deriveUserStatsPDA(marketId: number, userAddress: Address): Promise<Address> {
+  const [pda] = await getProgramDerivedAddress({
+    programAddress: PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS,
+    seeds: [
+      getBytesEncoder().encode(USER_STATS_SEED),
+      getU32Encoder().encode(marketId),
+      getAddressEncoder().encode(userAddress),
+    ],
+  });
+  return pda;
+}
+
+/**
+ * Fetches the orderbook and derives writable UserStats PDAs for all unique
+ * counterparties on the matching side.  These must be passed as remaining
+ * accounts so the contract can credit the maker when a fill occurs.
+ */
+async function getCounterpartyRemainingAccounts(
+  marketId: number,
+  orderbookPda: Address,
+  tokenType: "YES" | "NO",
+  orderSide: "BUY" | "SELL",
+  taker: Address,
+  maxMatches = 10,
+): Promise<AccountMeta<string>[]> {
+  const maybeBook = await fetchMaybeOrderBook(rpc, orderbookPda);
+  if (!maybeBook.exists) return [];
+
+  const book = maybeBook.data;
+
+  // For a BUY taker we scan sell orders; for a SELL taker we scan buy orders.
+  const relevantOrders =
+    tokenType === "YES"
+      ? orderSide === "BUY" ? book.yesSellOrders : book.yesBuyOrders
+      : orderSide === "BUY" ? book.noSellOrders  : book.noBuyOrders;
+
+  const seen = new Set<string>();
+  const counterparties: Address[] = [];
+  const takerStr = taker as string;
+
+  for (const order of relevantOrders) {
+    if (counterparties.length >= maxMatches) break;
+    const key = order.userKey as string;
+    if (key === takerStr) continue;        // skip self (contract prevents self-trading)
+    if (seen.has(key)) continue;           // already included
+    seen.add(key);
+    counterparties.push(order.userKey);
+  }
+
+  const pdas = await Promise.all(counterparties.map(addr => deriveUserStatsPDA(marketId, addr)));
+  return pdas.map(address => ({ address, role: AccountRole.WRITABLE } as AccountMeta<string>));
+}
+
 // ── Place limit order ─────────────────────────────────────────────────────────
 
 export interface PlaceOrderParams {
@@ -93,20 +162,26 @@ export interface PlaceOrderParams {
   marketId: number;
   tokenType: "YES" | "NO";   // which outcome token
   orderSide: "BUY" | "SELL"; // buy or sell that token
-  quantity: bigint;          // number of outcome tokens
+  quantity: bigint;          // outcome token base units (1 token = 1_000_000)
   price: bigint;             // micro-USDC  e.g. 50¢ → 500_000
 }
 
 export async function buildLimitOrderInstruction(params: PlaceOrderParams) {
   const { userSigner, marketId, tokenType, orderSide, quantity, price } = params;
+  console.log("price: ", price);
+  console.log("quantity: ", quantity);
+  console.log("orderSide: ", orderSide);
   const walletAddress = userSigner.address;
   const { marketPda, orderbookPda, market } = await getMarketContext(marketId);
 
-  const userCollateral = await deriveATA(walletAddress, market.collateralMint);
-  const userOutcomeYes = await deriveATA(walletAddress, market.outcomeYesMint);
-  const userOutcomeNo  = await deriveATA(walletAddress, market.outcomeNoMint);
+  const [userCollateral, userOutcomeYes, userOutcomeNo, remainingAccounts] = await Promise.all([
+    resolveUserTokenAccount(walletAddress, market.collateralMint),
+    resolveUserTokenAccount(walletAddress, market.outcomeYesMint),
+    resolveUserTokenAccount(walletAddress, market.outcomeNoMint),
+    getCounterpartyRemainingAccounts(marketId, orderbookPda, tokenType, orderSide, walletAddress),
+  ]);
 
-  return getPlaceOrderInstructionAsync({
+  const ix = await getPlaceOrderInstructionAsync({
     user:            userSigner,
     market:          marketPda,
     orderbook:       orderbookPda,
@@ -123,6 +198,9 @@ export async function buildLimitOrderInstruction(params: PlaceOrderParams) {
     price,
     maxIteration:    BigInt(10),
   });
+
+  if (remainingAccounts.length === 0) return ix;
+  return { ...ix, accounts: [...ix.accounts, ...remainingAccounts] };
 }
 
 // ── Split tokens (initialises userOutcomeYes + userOutcomeNo ATAs) ────────────
@@ -139,7 +217,7 @@ export async function buildSplitInstruction(params: SplitParams) {
   const walletAddress = userSigner.address;
   const { marketPda, market } = await getMarketContext(marketId);
 
-  const userCollateral = await deriveATA(walletAddress, market.collateralMint);
+  const userCollateral = await resolveUserTokenAccount(walletAddress, market.collateralMint);
   const userOutcomeYes = await deriveATA(walletAddress, market.outcomeYesMint);
   const userOutcomeNo  = await deriveATA(walletAddress, market.outcomeNoMint);
 
@@ -172,11 +250,14 @@ export async function buildMarketOrderInstruction(params: MarketOrderParams) {
   const walletAddress = userSigner.address;
   const { marketPda, orderbookPda, market } = await getMarketContext(marketId);
 
-  const userCollateral = await deriveATA(walletAddress, market.collateralMint);
-  const userOutcomeYes = await deriveATA(walletAddress, market.outcomeYesMint);
-  const userOutcomeNo  = await deriveATA(walletAddress, market.outcomeNoMint);
+  const [userCollateral, userOutcomeYes, userOutcomeNo, remainingAccounts] = await Promise.all([
+    resolveUserTokenAccount(walletAddress, market.collateralMint),
+    resolveUserTokenAccount(walletAddress, market.outcomeYesMint),
+    resolveUserTokenAccount(walletAddress, market.outcomeNoMint),
+    getCounterpartyRemainingAccounts(marketId, orderbookPda, tokenType, orderSide, walletAddress),
+  ]);
 
-  return getMarketOrderInstructionAsync({
+  const ix = await getMarketOrderInstructionAsync({
     user:            userSigner,
     market:          marketPda,
     orderbook:       orderbookPda,
@@ -194,6 +275,9 @@ export async function buildMarketOrderInstruction(params: MarketOrderParams) {
     orderAmount,
     maxIteration:    BigInt(10),
   });
+
+  if (remainingAccounts.length === 0) return ix;
+  return { ...ix, accounts: [...ix.accounts, ...remainingAccounts] };
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
