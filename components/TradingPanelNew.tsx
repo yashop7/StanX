@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Info, ArrowDownUp, Coins, Zap, Layers, Loader2 } from "lucide-react";
 import {
   Tooltip,
@@ -18,6 +17,7 @@ import {
   buildLimitOrderInstruction,
   buildMarketOrderInstruction,
   buildSplitInstruction,
+  buildMergeInstruction,
   PRICE_SCALE,
 } from "@/lib/blockchain/market";
 
@@ -50,6 +50,7 @@ export const TradingPanelNew = ({
   const [amount, setAmount] = useState<string>("");
   const [limitPrice, setLimitPrice] = useState<string>("");
   const [splitAmount, setSplitAmount] = useState<string>("");
+  const [mergeAmount, setMergeAmount] = useState<string>("");
   const { usdcBalance } = useTokenBalance(collateralMint);
   const { usdcBalance: yesBalance } = useTokenBalance(outcomeYesMint);
   const { usdcBalance: noBalance } = useTokenBalance(outcomeNoMint);
@@ -193,6 +194,47 @@ export const TradingPanelNew = ({
       toast.error("Transaction failed", {
         description:
           simLog || (err instanceof Error ? err.message : "Unknown error"),
+      });
+    }
+  };
+
+  const handleMerge = async () => {
+    const mergeAmountNum = parseFloat(mergeAmount);
+
+    if (!session) {
+      toast.error("Connect your wallet first.");
+      return;
+    }
+    if (!mergeAmount || isNaN(mergeAmountNum) || mergeAmountNum <= 0) {
+      toast.error("Please enter a valid amount to merge.");
+      return;
+    }
+    const maxMergeable = Math.min(yesBalance ?? 0, noBalance ?? 0);
+    if (mergeAmountNum > maxMergeable) {
+      toast.error("Insufficient tokens.", {
+        description: `You can merge up to ${maxMergeable.toLocaleString()} tokens.`,
+      });
+      return;
+    }
+
+    const { signer } = createWalletTransactionSigner(session);
+    const numericMarketId = parseInt(marketId, 10);
+
+    try {
+      const ix = await buildMergeInstruction({
+        userSigner: signer,
+        marketId: numericMarketId,
+        amount: BigInt(Math.round(mergeAmountNum * PRICE_SCALE)),
+      });
+      const sig = await send({ instructions: [ix], authority: signer });
+      toast.success("Tokens merged!", {
+        description: `Burned ${mergeAmountNum.toFixed(2)} YES + ${mergeAmountNum.toFixed(2)} NO → received ${mergeAmountNum.toFixed(2)} USDC — tx: ${String(sig).slice(0, 8)}…`,
+      });
+      setMergeAmount("");
+    } catch (err) {
+      console.error("[TradingPanel] merge failed:", err);
+      toast.error("Merge failed", {
+        description: err instanceof Error ? err.message : "Unknown error",
       });
     }
   };
@@ -571,158 +613,233 @@ export const TradingPanelNew = ({
         )}
 
         {/* Merge Order Content */}
-        {orderType === "merge" && (
-          <div className="space-y-4">
-            <div className="p-4 bg-muted/15 dark:bg-muted/10 rounded-xl border border-border/20 dark:border-border/10 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-amber-500/10">
-                  <Layers className="h-5 w-5 text-amber-400" />
+        {orderType === "merge" && (() => {
+          const yesHeld = yesBalance ?? 0;
+          const noHeld = noBalance ?? 0;
+          const maxMergeable = Math.min(yesHeld, noHeld);
+          const mergeAmountNum = parseFloat(mergeAmount) || 0;
+          const usdcBack = mergeAmountNum; // 1 YES + 1 NO → 1 USDC
+          const hasEnough = mergeAmountNum > 0 && mergeAmountNum <= maxMergeable;
+
+          return (
+            <div className="space-y-4">
+              {/* Token balance cards */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className={cn(
+                  "py-3 rounded-lg border text-left px-3.5",
+                  yesHeld > 0 ? "bg-success/8 border-success/30" : "bg-muted/20 border-border"
+                )}>
+                  <div className={cn("text-[10px] font-bold uppercase tracking-wider mb-0.5",
+                    yesHeld > 0 ? "text-success" : "text-muted-foreground"
+                  )}>YES</div>
+                  <div className="text-sm font-bold font-mono">{yesHeld > 0 ? yesHeld.toLocaleString() : "—"}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">held</div>
                 </div>
-                <div>
-                  <h4 className="text-sm font-semibold">Merge Positions</h4>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Combine Yes + No tokens to release SOL collateral
-                  </p>
+                <div className={cn(
+                  "py-3 rounded-lg border text-left px-3.5",
+                  noHeld > 0 ? "bg-danger/8 border-danger/30" : "bg-muted/20 border-border"
+                )}>
+                  <div className={cn("text-[10px] font-bold uppercase tracking-wider mb-0.5",
+                    noHeld > 0 ? "text-danger" : "text-muted-foreground"
+                  )}>NO</div>
+                  <div className="text-sm font-bold font-mono">{noHeld > 0 ? noHeld.toLocaleString() : "—"}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">held</div>
                 </div>
               </div>
 
-              <Separator className="bg-border/20 dark:bg-border/10" />
-
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Your Yes Tokens</span>
-                  <span className="font-mono">0.00</span>
+              {/* Amount input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="merge-amount" className="text-[11px] text-muted-foreground font-medium">
+                    Pairs to Merge
+                  </Label>
+                  <button
+                    onClick={() => setMergeAmount(String(maxMergeable))}
+                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
+                  >
+                    Max {maxMergeable.toLocaleString()}
+                  </button>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Your No Tokens</span>
-                  <span className="font-mono">0.00</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Max Mergeable</span>
-                  <span className="font-mono text-amber-400">0.00</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label
-                htmlFor="merge-amount"
-                className="text-xs text-muted-foreground font-medium"
-              >
-                Amount to Merge
-              </Label>
-              <Input
-                id="merge-amount"
-                type="number"
-                placeholder="0.00"
-                className="h-12 bg-muted/20 dark:bg-muted/10 border-border/30 dark:border-border/20 rounded-xl font-mono focus:border-amber-500/50 focus:ring-2 focus:ring-amber-500/20 transition-all"
-              />
-            </div>
-
-            <button
-              disabled
-              className="w-full py-3.5 rounded-xl font-semibold bg-amber-500/15 text-amber-400/60 border border-amber-500/20 cursor-not-allowed"
-            >
-              No Tokens to Merge
-            </button>
-          </div>
-        )}
-
-        {/* Split Order Content */}
-        {orderType === "split" && (
-          <div className="space-y-4">
-            <div className="p-4 bg-muted/15 dark:bg-muted/10 rounded-xl border border-border/20 dark:border-border/10 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-violet-500/10">
-                  <Coins className="h-5 w-5 text-violet-400" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold">Split Collateral</h4>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Lock USDC to mint equal Yes + No token pairs
-                  </p>
-                </div>
-              </div>
-
-              <Separator className="bg-border/20 dark:bg-border/10" />
-
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Collateral Rate</span>
-                  <span className="font-mono">1 USDC = 1 Yes + 1 No</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">
-                    Available Balance
-                  </span>
-                  <span className="font-mono">${balance.toLocaleString()}</span>
-                </div>
-                {splitAmount &&
-                  !isNaN(parseFloat(splitAmount)) &&
-                  parseFloat(splitAmount) > 0 && (
-                    <div className="flex justify-between text-violet-400">
-                      <span>You will receive</span>
-                      <span className="font-mono">
-                        {parseFloat(splitAmount).toFixed(2)} YES +{" "}
-                        {parseFloat(splitAmount).toFixed(2)} NO
-                      </span>
-                    </div>
-                  )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label
-                htmlFor="split-amount"
-                className="text-xs text-muted-foreground font-medium"
-              >
-                USDC Amount to Split
-              </Label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">
-                  $
-                </span>
                 <Input
-                  id="split-amount"
+                  id="merge-amount"
                   type="number"
                   placeholder="0.00"
-                  value={splitAmount}
-                  onChange={(e) => setSplitAmount(e.target.value)}
-                  className="pl-8 h-12 bg-muted/20 dark:bg-muted/10 border-border/30 dark:border-border/20 rounded-xl font-mono text-base focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/20 transition-all"
+                  value={mergeAmount}
+                  onChange={(e) => setMergeAmount(e.target.value)}
+                  className="h-11 bg-muted/30 border-border rounded-lg font-mono text-sm"
                 />
+                <div className="grid grid-cols-4 gap-1.5">
+                  {["1", "5", "10", "25"].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => setMergeAmount(val)}
+                      className={cn(
+                        "py-1.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
+                        mergeAmount === val
+                          ? "border-amber-500/50 bg-amber-500/10 text-amber-400"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                      )}
+                    >
+                      {val}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-4 gap-1.5 pt-1">
-                {["10", "25", "50", "100"].map((val) => (
-                  <button
-                    key={val}
-                    onClick={() => setSplitAmount(val)}
-                    className="py-2 text-xs font-medium text-muted-foreground bg-muted/20 dark:bg-muted/10 border border-border/20 dark:border-border/10 rounded-lg hover:bg-violet-500/20 hover:text-violet-400 hover:border-violet-500/30 transition-all duration-200"
-                  >
-                    ${val}
-                  </button>
-                ))}
+
+              {/* Receipt */}
+              <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
+                <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
+                  <span className="text-muted-foreground">YES burned</span>
+                  <span className="font-mono font-medium">
+                    {mergeAmountNum > 0 ? `${mergeAmountNum.toFixed(4)} YES` : "-"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
+                  <span className="text-muted-foreground">NO burned</span>
+                  <span className="font-mono font-medium">
+                    {mergeAmountNum > 0 ? `${mergeAmountNum.toFixed(4)} NO` : "-"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center px-3.5 py-2.5">
+                  <span className="text-xs text-muted-foreground">USDC received</span>
+                  <span className={cn(
+                    "text-sm font-bold font-mono",
+                    usdcBack > 0 ? "text-amber-400" : "text-muted-foreground/40"
+                  )}>
+                    {usdcBack > 0 ? `$${usdcBack.toFixed(2)}` : "—"}
+                  </span>
+                </div>
               </div>
+
+              {/* CTA */}
+              <button
+                onClick={handleMerge}
+                disabled={!hasEnough || isSending}
+                className={cn(
+                  "w-full py-3 rounded-lg font-semibold text-sm text-white transition-all duration-150",
+                  "disabled:opacity-40 disabled:cursor-not-allowed",
+                  "bg-amber-500 hover:brightness-110 shadow-sm shadow-amber-500/20"
+                )}
+              >
+                <span className="flex items-center justify-center gap-2">
+                  {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {isSending
+                    ? "Merging…"
+                    : maxMergeable <= 0
+                      ? "No Tokens to Merge"
+                      : `Merge${mergeAmount ? ` ${mergeAmount} pairs` : ""}`}
+                </span>
+              </button>
             </div>
+          );
+        })()}
 
-            <button
-              onClick={handleSplit}
-              disabled={
-                !splitAmount || parseFloat(splitAmount) <= 0 || isSending
-              }
-              className="relative w-full py-3.5 rounded-xl font-semibold text-white bg-violet-500 hover:bg-violet-400 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-linear-to-t from-violet-600/40 to-transparent" />
-              <span className="relative z-10 flex items-center justify-center gap-2">
-                {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
-                {isSending
-                  ? "Splitting…"
-                  : `Split${splitAmount ? ` • $${splitAmount}` : ""}`}
-              </span>
-            </button>
-          </div>
-        )}
+        {/* Split Order Content */}
+        {orderType === "split" && (() => {
+          const splitNum = parseFloat(splitAmount) || 0;
+          const hasEnough = splitNum > 0 && splitNum <= balance;
 
-        {/* Balance strip */}
+          return (
+            <div className="space-y-4">
+              {/* USDC balance card */}
+              <div className={cn(
+                "py-3 rounded-lg border px-3.5 transition-all",
+                balance > 0 ? "bg-muted/20 border-border" : "bg-muted/10 border-border/50"
+              )}>
+                <div className={cn("text-[10px] font-bold uppercase tracking-wider mb-1", balance > 0 ? "text-muted-foreground" : "text-muted-foreground/40")}>USDC</div>
+                <div className={cn("text-lg font-bold font-mono leading-none", balance > 0 ? "text-foreground" : "text-muted-foreground/30")}>
+                  {balance > 0 ? `$${balance.toLocaleString()}` : "—"}
+                </div>
+                <div className="text-[10px] text-muted-foreground/40 mt-1">available to split</div>
+              </div>
+
+              {/* Amount input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="split-amount" className="text-[11px] text-muted-foreground font-medium">
+                    Amount (USDC)
+                  </Label>
+                  <button
+                    onClick={() => setSplitAmount(String(balance))}
+                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
+                  >
+                    Max ${balance.toLocaleString()}
+                  </button>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium select-none">$</span>
+                  <Input
+                    id="split-amount"
+                    type="number"
+                    placeholder="0.00"
+                    value={splitAmount}
+                    onChange={(e) => setSplitAmount(e.target.value)}
+                    className="pl-7 h-11 bg-muted/30 border-border rounded-lg font-mono text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {["10", "25", "50", "100"].map((val) => (
+                    <button
+                      key={val}
+                      onClick={() => setSplitAmount(val)}
+                      className={cn(
+                        "py-1.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
+                        splitAmount === val
+                          ? "border-violet-500/50 bg-violet-500/10 text-violet-400"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                      )}
+                    >
+                      ${val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Receipt */}
+              <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
+                <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
+                  <span className="text-muted-foreground">Rate</span>
+                  <span className="font-mono font-medium">1 USDC = 1 YES + 1 NO</span>
+                </div>
+                <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
+                  <span className="text-muted-foreground">USDC locked</span>
+                  <span className="font-mono font-medium">
+                    {splitNum > 0 ? `$${splitNum.toFixed(2)}` : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center px-3.5 py-2.5">
+                  <span className="text-xs text-muted-foreground">You receive</span>
+                  <span className={cn(
+                    "text-sm font-bold font-mono",
+                    splitNum > 0 ? "text-violet-400" : "text-muted-foreground/40"
+                  )}>
+                    {splitNum > 0 ? `${splitNum.toFixed(2)} YES + ${splitNum.toFixed(2)} NO` : "—"}
+                  </span>
+                </div>
+              </div>
+
+              {/* CTA */}
+              <button
+                onClick={handleSplit}
+                disabled={!hasEnough || isSending}
+                className={cn(
+                  "w-full py-3 rounded-lg font-semibold text-sm text-white transition-all duration-150",
+                  "disabled:opacity-40 disabled:cursor-not-allowed",
+                  "bg-violet-500 hover:brightness-110 shadow-sm shadow-violet-500/20"
+                )}
+              >
+                <span className="flex items-center justify-center gap-2">
+                  {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {isSending
+                    ? "Splitting…"
+                    : `Split${splitAmount ? ` $${splitAmount}` : ""}`}
+                </span>
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* Balance strip
         <div className="border-t border-border px-4 py-3 flex items-center justify-between bg-muted/10">
           <span className="text-[11px] text-muted-foreground">
             {action === "sell"
@@ -734,7 +851,7 @@ export const TradingPanelNew = ({
               ? `${tokenBalance.toLocaleString()} ${tokenType.toUpperCase()}`
               : `$${balance.toLocaleString()}`}
           </span>
-        </div>
+        </div> */}
       </div>
     </div>
   );
