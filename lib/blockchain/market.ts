@@ -39,6 +39,8 @@ import { getInitializeMarketInstructionAsync } from "@/generated/instructions/in
 import { getPlaceOrderInstructionAsync } from "@/generated/instructions/placeOrder";
 import { getMarketOrderInstructionAsync } from "@/generated/instructions/marketOrder";
 import { getSplitTokensInstructionAsync } from "@/generated/instructions/splitTokens";
+import { getMergeTokensInstruction } from "@/generated/instructions/mergeTokens";
+import { getClaimFundsInstructionAsync } from "@/generated/instructions/claimFunds";
 import {
   fetchMarket,
   fetchAllMaybeMarket,
@@ -46,6 +48,7 @@ import {
   MARKET_DISCRIMINATOR,
 } from "@/generated/accounts/market";
 import { fetchMaybeOrderBook } from "@/generated/accounts/orderBook";
+import { fetchMaybeUserStats, type UserStats } from "@/generated/accounts/userStats";
 import { OrderSide, TokenType } from "@/generated/types";
 import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "@/generated/programs";
 
@@ -432,6 +435,77 @@ export async function initializeMarket(
   const signature = getSignatureFromTransaction(signedTransaction);
 
   return { signature };
+}
+
+// ── Merge tokens ──────────────────────────────────────────────────────────────
+
+export interface MergeParams {
+  userSigner: TransactionSigner;
+  marketId: number;
+  /** micro-USDC worth of paired YES+NO tokens to merge back into collateral */
+  amount: bigint;
+}
+
+export async function buildMergeInstruction(params: MergeParams) {
+  const { userSigner, marketId, amount } = params;
+  const walletAddress = userSigner.address;
+  const { marketPda, market } = await getMarketContext(marketId);
+
+  const [userCollateral, userOutcomeYes, userOutcomeNo] = await Promise.all([
+    resolveUserTokenAccount(walletAddress, market.collateralMint),
+    resolveUserTokenAccount(walletAddress, market.outcomeYesMint),
+    resolveUserTokenAccount(walletAddress, market.outcomeNoMint),
+  ]);
+
+  return getMergeTokensInstruction({
+    market:          marketPda,
+    user:            userSigner,
+    userCollateral,
+    collateralVault: market.collateralVault,
+    outcomeYesMint:  market.outcomeYesMint,
+    outcomeNoMint:   market.outcomeNoMint,
+    userOutcomeYes,
+    userOutcomeNo,
+    marketId,
+    amount,
+  });
+}
+
+// ── Claim funds ───────────────────────────────────────────────────────────────
+
+export interface ClaimFundsParams {
+  userSigner: TransactionSigner;
+  marketId: number;
+}
+
+export async function buildClaimFundsInstruction(params: ClaimFundsParams) {
+  const { userSigner, marketId } = params;
+  const { marketPda, market } = await getMarketContext(marketId);
+
+  return getClaimFundsInstructionAsync({
+    user:            userSigner,
+    market:          marketPda,
+    collateralMint:  market.collateralMint,
+    outcomeYesMint:  market.outcomeYesMint,
+    outcomeNoMint:   market.outcomeNoMint,
+    collateralVault: market.collateralVault,
+    yesEscrow:       market.yesEscrow,
+    noEscrow:        market.noEscrow,
+    marketId,
+  });
+}
+
+// ── Fetch UserStats ───────────────────────────────────────────────────────────
+
+export { type UserStats };
+
+export async function getUserStats(
+  marketId: number,
+  userAddress: Address,
+): Promise<UserStats | null> {
+  const pda = await deriveUserStatsPDA(marketId, userAddress);
+  const maybeAccount = await fetchMaybeUserStats(rpc, pda);
+  return maybeAccount.exists ? maybeAccount.data : null;
 }
 
 // ── getAllMarkets ─────────────────────────────────────────────────────────────
