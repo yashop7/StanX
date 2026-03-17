@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Share2, Bookmark, TrendingUp, Users, Clock, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Share2, Bookmark, TrendingUp, Clock, Loader2, AlertCircle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { getMarketByIdAction, getMarketsAction } from '@/app/markets/actions';
 import type { DisplayMarket } from '@/lib/blockchain/markets';
@@ -246,7 +246,11 @@ const MarketDetail = () => {
                 />
 
                 {/* User Position Stats */}
-                <UserStatsCard marketId={market.marketId} />
+                <UserStatsCard
+                  marketId={market.marketId}
+                  outcomeYesMint={market.outcomeYesMint}
+                  outcomeNoMint={market.outcomeNoMint}
+                />
 
                 {/* Market Info */}
                 <div className="panel-card p-5 space-y-4">

@@ -44,7 +44,7 @@ export default function Auth() {
       title: mode === 'login' ? "Welcome back!" : "Account created!",
       description: mode === 'login' 
         ? "You've successfully logged in." 
-        : "Welcome to PredictX. Start trading now!",
+        : "Welcome to Stanx. Start trading now!",
     });
     
     setIsLoading(false);
@@ -81,7 +81,7 @@ export default function Auth() {
             <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
               <TrendingUp className="h-5 w-5 text-primary" />
             </div>
-            <span>PredictX</span>
+            <span>Stanx</span>
           </Link>
 
           {/* Hero Content */}
@@ -119,7 +119,7 @@ export default function Auth() {
 
           {/* Footer */}
           <div className="text-sm text-muted-foreground">
-            © 2024 PredictX. All rights reserved.
+            © 2024 Stanx. All rights reserved.
           </div>
         </div>
       </div>
@@ -130,7 +130,7 @@ export default function Auth() {
         <div className="lg:hidden p-4 border-b border-border/30 dark:border-border/15">
           <Link href="/" className="flex items-center gap-2 text-lg font-bold">
             <TrendingUp className="h-5 w-5" />
-            <span>PredictX</span>
+            <span>Stanx</span>
           </Link>
         </div>
 

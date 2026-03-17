@@ -10,6 +10,16 @@
       "source": "blader/humanizer",
       "sourceType": "github",
       "computedHash": "67bd72223e92b4f520a1abbc9ff9db50641ed84128ba9521028d9b151dbd2429"
+    },
+    "landing-page-optimization": {
+      "source": "reynau/landing-page-optimization",
+      "sourceType": "github",
+      "computedHash": "6e45e8e09c23e66da1abfd8b0481542c9fca8dc5ad86103c0d4cddb4d6afacb4"
+    },
+    "ux-improve": {
+      "source": "101xanshu/ux-improve",
+      "sourceType": "github",
+      "computedHash": "b6b56019ef210ca921e170bfac8f2d28a35f624064933ed1810f6551420ffcdf"
     }
   }
 }

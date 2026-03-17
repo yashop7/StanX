@@ -3,12 +3,11 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { 
-  Menu, 
-  User, 
-  Wallet, 
-  Settings, 
+  Menu,
+  User,
+  Wallet,
+  Settings,
   ChevronDown,
-  BarChart3,
   History,
   Plus,
   TrendingUp
@@ -41,10 +40,7 @@ export const Header = () => {
   const shortenAddress = (address: string) =>
     `${address.slice(0, 4)}...${address.slice(-4)}`;
 
-  const navLinks = [
-    { href: '/markets', label: 'Markets' },
-    { href: '/portfolio', label: 'Portfolio' },
-  ];
+  const navLinks = [];
 
   return (
     <header className="sticky top-0 z-50 w-full navbar-blur border-b border-border">
@@ -55,7 +51,7 @@ export const Header = () => {
           <div className="w-6 h-6 rounded-md bg-foreground flex items-center justify-center">
             <TrendingUp className="h-3.5 w-3.5 text-background" />
           </div>
-          <span className="font-semibold text-sm tracking-tight text-foreground">PredictX</span>
+          <span className="font-semibold text-sm tracking-tight text-foreground">Stanx</span>
         </Link>
 
         {/* Navigation */}
@@ -137,12 +133,6 @@ export const Header = () => {
                     </p>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/portfolio" className="flex items-center gap-2 text-sm">
-                      <BarChart3 className="h-3.5 w-3.5" />
-                      Portfolio
-                    </Link>
-                  </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href="/account" className="flex items-center gap-2 text-sm">
                       <User className="h-3.5 w-3.5" />

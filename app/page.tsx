@@ -12,18 +12,21 @@ import type { DisplayMarket } from "@/lib/blockchain/markets";
 import {
   ArrowRight, TrendingUp, Users, Zap, Shield,
   BarChart2, Eye, Lock, Cpu, ChevronDown,
-  Trophy, Clapperboard, Gamepad2, Globe, Music, Tv
+  Trophy, Clapperboard, Gamepad2, Globe, Music, Tv,
+  Search, TrendingDown, CheckCircle2, ArrowLeftRight
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { BackgroundBeams } from "@/components/ui/background-beams";
+import { MovingBorderButton } from "@/components/ui/moving-border";
 
 const CATEGORIES = [
-  { icon: Clapperboard, label: "Entertainment", count: 42, color: "text-purple-500", bg: "bg-purple-500/10" },
-  { icon: Trophy,       label: "Sports",        count: 31, color: "text-orange-500", bg: "bg-orange-500/10" },
-  { icon: Gamepad2,     label: "Gaming",        count: 28, color: "text-blue-500",   bg: "bg-blue-500/10"  },
-  { icon: Globe,        label: "Crypto",        count: 24, color: "text-yellow-500", bg: "bg-yellow-500/10" },
-  { icon: Tv,           label: "Streaming",     count: 19, color: "text-pink-500",   bg: "bg-pink-500/10"  },
-  { icon: Music,        label: "Music",         count: 15, color: "text-success",    bg: "bg-success/10"   },
+  { icon: Clapperboard, label: "Entertainment", color: "text-purple-500", bg: "bg-purple-500/10" },
+  { icon: Trophy,       label: "Sports",        color: "text-orange-500", bg: "bg-orange-500/10" },
+  { icon: Gamepad2,     label: "Gaming",        color: "text-blue-500",   bg: "bg-blue-500/10"  },
+  { icon: Globe,        label: "Crypto",        color: "text-yellow-500", bg: "bg-yellow-500/10" },
+  { icon: Tv,           label: "Streaming",     color: "text-pink-500",   bg: "bg-pink-500/10"  },
+  { icon: Music,        label: "Music",         color: "text-success",    bg: "bg-success/10"   },
 ];
 
 const ACTIVITY = [
@@ -41,7 +44,7 @@ const FAQS = [
   },
   {
     q: "How does the order book work?",
-    a: "PredictX uses a Central Limit Order Book (CLOB). Buyers and sellers place orders at specific prices; when a buy matches a sell at the same price, a trade executes — the same mechanism used by traditional financial exchanges.",
+    a: "Stanx uses a Central Limit Order Book (CLOB). Buyers and sellers place orders at specific prices; when a buy matches a sell at the same price, a trade executes — the same mechanism used by traditional financial exchanges.",
   },
   {
     q: "How do I earn money?",
@@ -83,13 +86,7 @@ const Home = () => {
 
           {/* ── Hero ─────────────────────────────────────── */}
           <section className="relative overflow-hidden border-b border-border">
-            {/* Ambient gradient */}
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="blur-orb w-150 h-150 -top-50 left-[10%] bg-blue-500/8" />
-              <div className="blur-orb w-125 h-125 -bottom-25 right-[5%] bg-emerald-500/6" style={{ animationDelay: '3s' }} />
-            </div>
-            {/* Dot grid */}
-            <div className="absolute inset-0 pattern-dots opacity-40" />
+
 
             <div className="relative max-w-350 mx-auto px-4 lg:px-6 pt-24 pb-20 md:pt-36 md:pb-28">
               {/* Status pill */}
@@ -103,41 +100,31 @@ const Home = () => {
               {/* Headline */}
               <div className="text-center max-w-4xl mx-auto mb-8">
                 <h1 className="text-[clamp(2.5rem,8vw,5.5rem)] font-bold tracking-[-0.03em] leading-[1.05] mb-6 text-foreground">
-                  Trade what you
+                  Get paid when
                   <br />
-                  <span className="text-muted-foreground font-normal">think will happen.</span>
+                  <span className="text-muted-foreground font-normal">you&apos;re right.</span>
                 </h1>
                 <p className="text-base md:text-lg text-muted-foreground max-w-xl mx-auto leading-relaxed">
-                  Prediction markets for entertainment, sports, and gaming.
-                  Powered by an on-chain order book.
+                  Trade YES/NO shares on sports, crypto, and entertainment outcomes.
+                  On-chain order book — every winning share pays $1 USDC.
                 </p>
               </div>
 
               {/* CTAs */}
-              <div className="flex items-center justify-center gap-3 mb-16">
-                <Button asChild size="lg" className="h-10 px-5 text-sm font-medium bg-foreground text-background hover:bg-foreground/90">
-                  <Link href="/markets">
-                    Browse markets
-                    <ArrowRight className="ml-1.5 h-4 w-4" />
-                  </Link>
-                </Button>
+              <div className="flex items-center justify-center gap-3">
+                <MovingBorderButton
+                  as={Link}
+                  href="/markets"
+                  duration={2500}
+                  containerClassName="h-10 rounded-lg"
+                  className="gap-1.5"
+                >
+                  Start Trading Free
+                  <ArrowRight className="h-4 w-4" />
+                </MovingBorderButton>
                 <Button asChild size="lg" variant="outline" className="h-10 px-5 text-sm font-medium border-border hover:bg-muted/60 text-foreground">
                   <Link href="#how-it-works">How it works</Link>
                 </Button>
-              </div>
-
-              {/* Stats */}
-              <div className="flex items-center justify-center gap-10 md:gap-16">
-                {[
-                  { value: "$4.2M", label: "Volume traded" },
-                  { value: "28K+", label: "Traders" },
-                  { value: "150+", label: "Live markets" },
-                ].map((stat, i) => (
-                  <div key={i} className="text-center">
-                    <p className="text-xl md:text-2xl font-semibold tracking-tight">{stat.value}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{stat.label}</p>
-                  </div>
-                ))}
               </div>
             </div>
           </section>
@@ -179,7 +166,7 @@ const Home = () => {
           <section className="py-16 md:py-20 border-b border-border">
             <div className="max-w-350 mx-auto px-4 lg:px-6">
               <div className="mb-10">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Why PredictX</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Why Stanx</p>
                 <h2 className="text-xl md:text-2xl font-semibold tracking-tight">Built for real traders</h2>
               </div>
 
@@ -249,19 +236,22 @@ const Home = () => {
                   </div>
                 </div>
 
-                {/* Wide — stats */}
-                <div className="col-span-2 panel-card p-7 flex flex-col justify-between gap-4 hover:border-border-strong transition-colors">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Platform at a glance</p>
-                  <div className="grid grid-cols-3 gap-4">
-                    {[
-                      { value: "$4.2M", label: "Volume" },
-                      { value: "28K+", label: "Traders" },
-                      { value: "150+", label: "Markets" },
-                    ].map((s) => (
-                      <div key={s.label}>
-                        <p className="text-xl font-semibold tracking-tight">{s.value}</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{s.label}</p>
-                      </div>
+                {/* Wide — Split & Merge */}
+                <div className="col-span-2 panel-card p-7 flex flex-col gap-4 hover:border-border-strong transition-colors">
+                  <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center">
+                    <ArrowLeftRight className="h-5 w-5 text-violet-500" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-sm mb-1.5">Split & Merge Collateral</h3>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Lock 1 USDC to mint 1 YES + 1 NO share pair. Burn a matching pair anytime to reclaim your USDC — no counterparty needed. Exit whenever you want.
+                    </p>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {["1 USDC → 1 YES + 1 NO", "Burn pair → reclaim USDC", "Exit anytime"].map((tag) => (
+                      <span key={tag} className="text-[11px] px-2 py-0.5 rounded bg-muted border border-border text-muted-foreground">
+                        {tag}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -320,7 +310,7 @@ const Home = () => {
                     </div>
                     <div>
                       <p className="text-sm font-medium">{cat.label}</p>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">{cat.count} markets</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">Explore</p>
                     </div>
                   </Link>
                 ))}
@@ -329,27 +319,109 @@ const Home = () => {
           </section>
 
           {/* ── How it works ───────────────────────────── */}
-          <section id="how-it-works" className="py-16 md:py-20 border-b border-border">
+          <section id="how-it-works" className="py-16 md:py-24 border-b border-border">
             <div className="max-w-350 mx-auto px-4 lg:px-6">
-              <div className="text-center mb-12">
-                <h2 className="text-xl md:text-2xl font-semibold tracking-tight mb-3">How it works</h2>
-                <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  A transparent Central Limit Order Book — every trade is verifiable on Solana.
+              {/* Header */}
+              <div className="text-center mb-14">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">How it works</p>
+                <h2 className="text-xl md:text-3xl font-semibold tracking-tight mb-3">From zero to trade in minutes</h2>
+                <p className="text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
+                  A transparent on-chain order book. No house, no AMM slippage — just real price discovery.
                 </p>
               </div>
 
-              <div className="grid md:grid-cols-3 gap-4 max-w-4xl mx-auto">
-                {[
-                  { num: "01", title: "Pick a market", description: "Browse markets across entertainment, gaming, sports, and more." },
-                  { num: "02", title: "Place an order", description: "Buy YES or NO shares. Set limit orders or fill at market price." },
-                  { num: "03", title: "Collect winnings", description: "Correct shares pay $1 on resolution. Everything settles on-chain." },
-                ].map((step, i) => (
-                  <div key={i} className="panel-card p-6 stagger-in" style={{ animationDelay: `${i * 100}ms` }}>
-                    <p className="text-xs font-mono text-muted-foreground mb-4">{step.num}</p>
-                    <h3 className="font-semibold text-sm mb-2">{step.title}</h3>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{step.description}</p>
+              {/* Steps */}
+              <div className="relative max-w-5xl mx-auto">
+                {/* Connector line (desktop) */}
+                <div className="hidden md:block absolute top-10 left-[calc(16.67%+1.5rem)] right-[calc(16.67%+1.5rem)] h-px bg-border" />
+
+                <div className="grid md:grid-cols-3 gap-6 md:gap-8">
+                  {[
+                    {
+                      num: "01",
+                      icon: Search,
+                      iconColor: "text-blue-500",
+                      iconBg: "bg-blue-500/10",
+                      title: "Pick a market",
+                      description: "Browse markets across entertainment, sports, gaming, and crypto. Each market asks a yes/no question that resolves on a real-world outcome.",
+                      bullets: ["Filter by category", "See live probability", "Check open interest"],
+                    },
+                    {
+                      num: "02",
+                      icon: ArrowLeftRight,
+                      iconColor: "text-purple-500",
+                      iconBg: "bg-purple-500/10",
+                      title: "Place your order",
+                      description: "Buy YES or NO shares at any price. Use a limit order to set your exact price, or a market order to fill instantly at the best available ask.",
+                      bullets: ["Limit & market orders", "No AMM slippage", "Order book depth visible"],
+                    },
+                    {
+                      num: "03",
+                      icon: CheckCircle2,
+                      iconColor: "text-success",
+                      iconBg: "bg-success/10",
+                      title: "Collect winnings",
+                      description: "When the event resolves, winning shares pay out exactly $1 USDC each. Losing shares expire at $0. Settlement is automatic — no claiming needed.",
+                      bullets: ["$1 per winning share", "Auto-settle on-chain", "USDC in your wallet"],
+                    },
+                  ].map((step, i) => (
+                    <div
+                      key={i}
+                      className="relative flex flex-col gap-5 panel-card p-6 md:p-7 stagger-in hover:border-border-strong transition-colors"
+                      style={{ animationDelay: `${i * 120}ms` }}
+                    >
+                      {/* Step badge + icon */}
+                      <div className="flex items-center justify-between">
+                        <div className={cn("w-11 h-11 rounded-xl flex items-center justify-center", step.iconBg)}>
+                          <step.icon className={cn("h-5 w-5", step.iconColor)} />
+                        </div>
+                        <span className="text-xs font-mono font-semibold text-muted-foreground/50 select-none">{step.num}</span>
+                      </div>
+
+                      {/* Content */}
+                      <div>
+                        <h3 className="font-semibold text-sm mb-2">{step.title}</h3>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{step.description}</p>
+                      </div>
+
+                      {/* Bullets */}
+                      <ul className="flex flex-col gap-1.5 mt-auto">
+                        {step.bullets.map((b) => (
+                          <li key={b} className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <span className={cn("w-1 h-1 rounded-full shrink-0", step.iconColor.replace("text-", "bg-"))} />
+                            {b}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bottom explainer — share mechanics */}
+              <div className="mt-10 max-w-5xl mx-auto grid sm:grid-cols-2 gap-4">
+                <div className="panel-card p-5 flex gap-4 items-start hover:border-border-strong transition-colors">
+                  <div className="w-9 h-9 rounded-lg bg-success/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <TrendingUp className="h-4 w-4 text-success" />
                   </div>
-                ))}
+                  <div>
+                    <p className="text-sm font-semibold mb-1">YES shares</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Pay $1 if the event happens. Worth <span className="text-foreground font-medium">more</span> as probability rises. Buy low, sell high — or hold to resolution.
+                    </p>
+                  </div>
+                </div>
+                <div className="panel-card p-5 flex gap-4 items-start hover:border-border-strong transition-colors">
+                  <div className="w-9 h-9 rounded-lg bg-danger/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <TrendingDown className="h-4 w-4 text-danger" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold mb-1">NO shares</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Pay $1 if the event <span className="italic">doesn&apos;t</span> happen. Worth more as probability falls. A hedge or a directional bet against the crowd.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
@@ -386,10 +458,9 @@ const Home = () => {
                 {/* Copy */}
                 <div className="md:sticky md:top-24">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">Activity</p>
-                  <h2 className="text-xl md:text-2xl font-semibold tracking-tight mb-3">Real trades, happening now</h2>
+                  <h2 className="text-xl md:text-2xl font-semibold tracking-tight mb-3">Watch positions form in real time</h2>
                   <p className="text-sm text-muted-foreground leading-relaxed mb-6">
-                    Watch the crowd take positions in real time. When more people buy YES,
-                    the price rises — the order book never lies.
+                    Every YES and NO trade shifts the market price. The order book is public — see exactly what the crowd believes, and trade against it.
                   </p>
                   <Button asChild variant="outline" size="sm" className="border-border text-sm">
                     <Link href="/markets">
@@ -493,20 +564,24 @@ const Home = () => {
           <section className="py-16 md:py-24">
             <div className="max-w-350 mx-auto px-4 lg:px-6">
               <div className="relative overflow-hidden rounded-xl border border-border bg-card p-10 md:p-16 text-center">
-                <div className="blur-orb w-100 h-100 -top-25 left-1/2 -translate-x-1/2 bg-blue-500/6" />
-                <div className="relative">
+                <BackgroundBeams />
+                <div className="relative z-10">
                   <h2 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3">
-                    Ready to trade?
+                    Your next correct call pays in USDC.
                   </h2>
                   <p className="text-sm text-muted-foreground mb-8 max-w-sm mx-auto">
-                    Connect your Solana wallet and start predicting in under a minute.
+                    Connect a Solana wallet. Your first trade takes under 60 seconds.
                   </p>
                   <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                    <Button asChild size="lg" className="h-10 px-6 text-sm font-medium bg-foreground text-background hover:bg-foreground/90">
-                      <Link href="/markets">
-                        Browse markets <ArrowRight className="ml-1.5 h-4 w-4" />
-                      </Link>
-                    </Button>
+                    <MovingBorderButton
+                      as={Link}
+                      href="/markets"
+                      duration={2000}
+                      containerClassName="h-10 rounded-lg"
+                      className="px-6 gap-1.5"
+                    >
+                      Open First Trade <ArrowRight className="h-4 w-4" />
+                    </MovingBorderButton>
                     <Button asChild size="lg" variant="outline" className="h-10 px-6 text-sm font-medium border-border">
                       <Link href="/create-market">Create a market</Link>
                     </Button>
