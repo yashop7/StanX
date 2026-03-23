@@ -39,7 +39,8 @@ export type MarketOrderExecuted = {
   user: Address;
   side: OrderSide;
   tokenType: TokenType;
-  totalQuantity: bigint;
+  initialQuantity: bigint;
+  filledQuantity: bigint;
   ordersMatched: bigint;
   timestamp: bigint;
 };
@@ -49,7 +50,8 @@ export type MarketOrderExecutedArgs = {
   user: Address;
   side: OrderSideArgs;
   tokenType: TokenTypeArgs;
-  totalQuantity: number | bigint;
+  initialQuantity: number | bigint;
+  filledQuantity: number | bigint;
   ordersMatched: number | bigint;
   timestamp: number | bigint;
 };
@@ -60,7 +62,8 @@ export function getMarketOrderExecutedEncoder(): FixedSizeEncoder<MarketOrderExe
     ["user", getAddressEncoder()],
     ["side", getOrderSideEncoder()],
     ["tokenType", getTokenTypeEncoder()],
-    ["totalQuantity", getU64Encoder()],
+    ["initialQuantity", getU64Encoder()],
+    ["filledQuantity", getU64Encoder()],
     ["ordersMatched", getU64Encoder()],
     ["timestamp", getI64Encoder()],
   ]);
@@ -72,7 +75,8 @@ export function getMarketOrderExecutedDecoder(): FixedSizeDecoder<MarketOrderExe
     ["user", getAddressDecoder()],
     ["side", getOrderSideDecoder()],
     ["tokenType", getTokenTypeDecoder()],
-    ["totalQuantity", getU64Decoder()],
+    ["initialQuantity", getU64Decoder()],
+    ["filledQuantity", getU64Decoder()],
     ["ordersMatched", getU64Decoder()],
     ["timestamp", getI64Decoder()],
   ]);

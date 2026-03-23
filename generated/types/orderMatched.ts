@@ -36,6 +36,7 @@ import {
 
 export type OrderMatched = {
   marketId: number;
+  takerOrderId: bigint;
   makerOrderId: bigint;
   takerSide: OrderSide;
   taker: Address;
@@ -48,6 +49,7 @@ export type OrderMatched = {
 
 export type OrderMatchedArgs = {
   marketId: number;
+  takerOrderId: number | bigint;
   makerOrderId: number | bigint;
   takerSide: OrderSideArgs;
   taker: Address;
@@ -61,6 +63,7 @@ export type OrderMatchedArgs = {
 export function getOrderMatchedEncoder(): FixedSizeEncoder<OrderMatchedArgs> {
   return getStructEncoder([
     ["marketId", getU32Encoder()],
+    ["takerOrderId", getU64Encoder()],
     ["makerOrderId", getU64Encoder()],
     ["takerSide", getOrderSideEncoder()],
     ["taker", getAddressEncoder()],
@@ -75,6 +78,7 @@ export function getOrderMatchedEncoder(): FixedSizeEncoder<OrderMatchedArgs> {
 export function getOrderMatchedDecoder(): FixedSizeDecoder<OrderMatched> {
   return getStructDecoder([
     ["marketId", getU32Decoder()],
+    ["takerOrderId", getU64Decoder()],
     ["makerOrderId", getU64Decoder()],
     ["takerSide", getOrderSideDecoder()],
     ["taker", getAddressDecoder()],

@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
+import { useWalletSession } from '@solana/react-hooks';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
 import { TradingChartRecharts } from '@/components/TradingChartRecharts';
 import { TradingPanelNew } from '@/components/TradingPanelNew';
 import { OrderBook } from '@/components/OrderBook';
+import { OnChainOrderBook } from '@/components/OnChainOrderBook';
 import { MarketSwitcher } from '@/components/MarketSwitcher';
 import { CommentsSection } from '@/components/CommentsSection';
 import { PageTransition } from '@/components/PageTransition';
@@ -19,6 +21,11 @@ import { formatDistanceToNow } from 'date-fns';
 import { getMarketByIdAction, getMarketsAction } from '@/app/markets/actions';
 import type { DisplayMarket } from '@/lib/blockchain/markets';
 import { UserStatsCard } from '@/components/UserStatsCard';
+import { fetchMarketTrades, toDisplayPrice, toDisplayQty } from '@/lib/api/backend';
+import type { BackendTrade } from '@/lib/api/backend';
+
+import { cn } from '@/lib/utils';
+import { UserMarketOrders } from '@/components/UserMarketOrders';
 
 const MarketDetail = () => {
   const params = useParams();
@@ -30,6 +37,10 @@ const MarketDetail = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTokenType, setSelectedTokenType] = useState<'yes' | 'no'>('yes');
+  const walletSession = useWalletSession();
+  const userPubkey = walletSession?.account?.address as string | undefined;
+
+  const [marketTrades, setMarketTrades] = useState<BackendTrade[]>([]);
 
   const load = useCallback(async () => {
     if (isNaN(marketId)) {
@@ -56,6 +67,20 @@ const MarketDetail = () => {
   }, [marketId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Fetch market trades from backend
+  const loadTrades = useCallback(() => {
+    if (isNaN(marketId)) return;
+    fetchMarketTrades(marketId, 50)
+      .then(setMarketTrades)
+      .catch((e) => console.warn('[Backend] trades fetch failed:', e));
+  }, [marketId]);
+
+  useEffect(() => {
+    loadTrades();
+    const interval = setInterval(loadTrades, 15_000);
+    return () => clearInterval(interval);
+  }, [loadTrades]);
 
   const formatVolume = (v: number) => {
     if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
@@ -187,18 +212,64 @@ const MarketDetail = () => {
               {/* Trading Chart */}
               <TradingChartRecharts data={market.priceHistory} />
 
-              {/* Order Book */}
-              <OrderBook
-                marketId={marketIdStr}
-                yesPrice={market.yesPrice}
-                noPrice={market.noPrice}
-                selectedTokenType={selectedTokenType}
-              />
+              {/* Order Books — side-by-side comparison */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Order Book Comparison
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-medium">
+                    Testing
+                  </span>
+                </div>
+                <div className="space-y-4">
+                  {/* Backend WebSocket orderbook */}
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium px-1 flex items-center gap-1.5">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Backend (WebSocket)
+                    </p>
+                    <OrderBook
+                      marketId={marketIdStr}
+                      yesPrice={market.yesPrice}
+                      noPrice={market.noPrice}
+                      selectedTokenType={selectedTokenType}
+                      userPubkey={userPubkey}
+                    />
+                  </div>
+
+                  {/* On-chain RPC orderbook */}
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-muted-foreground font-medium px-1 flex items-center gap-1.5">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-violet-500" />
+                      On-Chain (RPC Poll)
+                    </p>
+                    <OnChainOrderBook
+                      marketId={marketIdStr}
+                      yesPrice={market.yesPrice}
+                      noPrice={market.noPrice}
+                      selectedTokenType={selectedTokenType}
+                      userPubkey={userPubkey}
+                    />
+                  </div>
+                </div>
+              </div>
 
               {/* Tabs */}
               <Tabs defaultValue="about" className="w-full">
                 <TabsList className="w-full justify-start h-10 bg-muted/20 dark:bg-muted/10 p-1 rounded-xl border border-border/20 dark:border-border/10">
                   <TabsTrigger value="about" className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">About</TabsTrigger>
+                  <TabsTrigger value="my-orders" className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                    My Orders
+                  </TabsTrigger>
+                  <TabsTrigger value="trades" className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                    Trades
+                    {marketTrades.length > 0 && (
+                      <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full bg-muted/60 text-muted-foreground font-bold">
+                        {marketTrades.length}
+                      </span>
+                    )}
+                  </TabsTrigger>
                   <TabsTrigger value="comments" className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">Comments</TabsTrigger>
                 </TabsList>
 
@@ -223,6 +294,55 @@ const MarketDetail = () => {
                       </CardContent>
                     </Card>
                   )}
+                </TabsContent>
+
+                {/* My Orders Tab — fetches directly from backend */}
+                <TabsContent value="my-orders" className="mt-4">
+                  <Card className="panel-card">
+                    <CardContent className="pt-5 pb-5">
+                      <UserMarketOrders marketId={marketId} userPubkey={userPubkey} />
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* Market Trades Tab */}
+                <TabsContent value="trades" className="mt-4">
+                  <Card className="panel-card">
+                    <CardContent className="pt-5 pb-5">
+                      {marketTrades.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-6">No trades yet.</p>
+                      ) : (
+                        <div className="space-y-0.5">
+                          <div className="grid grid-cols-4 px-3 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider border-b border-border/20 mb-1">
+                            <span>Side</span>
+                            <span>Token</span>
+                            <span className="text-right">Price</span>
+                            <span className="text-right">Qty</span>
+                          </div>
+                          <div className="max-h-96 overflow-y-auto space-y-0.5">
+                            {marketTrades.map((trade) => (
+                              <div
+                                key={trade.id}
+                                className="grid grid-cols-4 items-center px-3 py-2 text-xs rounded-lg hover:bg-muted/10 transition-colors"
+                              >
+                                <span className={cn('font-semibold', trade.taker_side === 'Buy' ? 'text-emerald-400' : 'text-red-400')}>
+                                  {trade.taker_side}
+                                </span>
+                                <span className={cn('font-mono text-[11px]', trade.token_type === 'Yes' ? 'text-emerald-400' : 'text-red-400')}>
+                                  {trade.token_type}
+                                </span>
+                                <span className="text-right font-mono font-semibold">{toDisplayPrice(trade.price).toFixed(1)}¢</span>
+                                <span className="text-right font-mono text-muted-foreground">{toDisplayQty(trade.quantity).toFixed(4)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground/50 px-3 pt-2">
+                            Showing {marketTrades.length} most recent · refreshes every 15s
+                          </p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
                 </TabsContent>
 
                 <TabsContent value="comments" className="mt-4">
@@ -274,6 +394,32 @@ const MarketDetail = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Backend Market Info */}
+                {marketTrades.length > 0 && (
+                  <div className="panel-card p-5 space-y-3">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Recent Trades (Backend)
+                    </h4>
+                    <div className="space-y-1.5">
+                      {marketTrades.slice(0, 6).map((trade) => (
+                        <div key={trade.id} className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <span className={cn('font-semibold', trade.taker_side === 'Buy' ? 'text-emerald-400' : 'text-red-400')}>
+                              {trade.taker_side}
+                            </span>
+                            <span className={cn('text-[10px]', trade.token_type === 'Yes' ? 'text-emerald-400' : 'text-red-400')}>
+                              {trade.token_type}
+                            </span>
+                          </div>
+                          <span className="font-mono font-semibold">{toDisplayPrice(trade.price).toFixed(1)}¢</span>
+                          <span className="font-mono text-muted-foreground">{toDisplayQty(trade.quantity).toFixed(4)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Market Switcher */}
                 <MarketSwitcher markets={allMarkets} currentMarketId={marketIdStr} />
