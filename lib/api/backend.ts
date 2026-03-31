@@ -180,6 +180,26 @@ export async function fetchUserTrades(userPubkey: string, limit = 50): Promise<B
   return get<BackendTrade[]>(`/user/${userPubkey}/trades?limit=${Math.min(limit, 200)}`);
 }
 
+/** GET /user/:pubkey/markets — all markets created/initialized by this user */
+export async function fetchUserCreatedMarkets(userPubkey: string): Promise<BackendMarket[]> {
+  return get<BackendMarket[]>(`/user/${userPubkey}/markets`);
+}
+
+export interface IndexerHealth {
+  indexer_ok: boolean;
+  last_heartbeat: number;
+  seconds_since_heartbeat: number;
+}
+
+/** GET /health — checks if the indexer is alive and writing heartbeats */
+export async function fetchIndexerHealth(): Promise<IndexerHealth> {
+  const res = await fetch(`${BASE_URL}/health`, { cache: 'no-store' });
+  if (!res.ok) {
+    return { indexer_ok: false, last_heartbeat: 0, seconds_since_heartbeat: 0 };
+  }
+  return res.json() as Promise<IndexerHealth>;
+}
+
 /** Returns the WebSocket URL for a market's live orderbook.
  *  WebSocket always connects directly to the backend (not proxied). */
 export function getOrderbookWsUrl(marketId: number): string {

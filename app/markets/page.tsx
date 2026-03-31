@@ -26,6 +26,7 @@ const Markets = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<string>('volume');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const loadMarkets = useCallback(async () => {
@@ -45,9 +46,16 @@ const Markets = () => {
   }, [loadMarkets]);
 
   const filteredMarkets = markets
-    .filter(market =>
-      market.question.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    .filter(market => {
+      const matchesSearch = market.question.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus =
+        statusFilter === 'all'          ? true :
+        statusFilter === 'live'         ? !market.isSettled && market.status === 'active' :
+        statusFilter === 'ending-soon'  ? !market.isSettled && market.status === 'ending-soon' :
+        statusFilter === 'settled'      ? market.isSettled :
+        true;
+      return matchesSearch && matchesStatus;
+    })
     .sort((a, b) => {
       switch (sortBy) {
         case 'volume':      return b.volume - a.volume;
@@ -104,6 +112,18 @@ const Markets = () => {
                 className="pl-10 h-11 bg-muted/30 border-border/30 focus:border-border/60"
               />
             </div>
+
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-40 h-11 bg-muted/30 border-border/30">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Markets</SelectItem>
+                <SelectItem value="live">Live</SelectItem>
+                <SelectItem value="ending-soon">Ending Soon</SelectItem>
+                <SelectItem value="settled">Settled</SelectItem>
+              </SelectContent>
+            </Select>
 
             <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger className="w-45 h-11 bg-muted/30 border-border/30">

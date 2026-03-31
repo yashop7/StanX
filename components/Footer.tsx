@@ -15,7 +15,7 @@ export const Footer = () => {
           <div className="col-span-2 md:col-span-1">
             <Link href="/" className="flex items-center gap-2 font-bold text-lg mb-4 hover-scale inline-flex">
               <Clapperboard className="h-5 w-5 text-primary" />
-              <span>Finwe</span>
+              <span>StanX</span>
             </Link>
             <p className="text-sm text-muted-foreground mb-5 max-w-xs">
               The premier entertainment prediction market. Trade on the outcomes of your favorite creators and shows.
@@ -63,7 +63,7 @@ export const Footer = () => {
         </div>
 
         <div className="pt-8 border-t border-border/20 flex flex-col md:flex-row items-center justify-between gap-4">
-          <p className="text-xs text-muted-foreground">© 2024 Finwe. All rights reserved.</p>
+          <p className="text-xs text-muted-foreground">© 2024 StanX. All rights reserved.</p>
           <div className="flex items-center gap-6">
             {['Privacy', 'Terms', 'Cookies'].map((item) => (
               <a key={item} href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors hover-scale">{item}</a>

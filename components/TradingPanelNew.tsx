@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Info, ArrowDownUp, Coins, Zap, Layers, Loader2 } from "lucide-react";
+import { Info, ArrowDownUp, Coins, Zap, Layers, Loader2, AlertTriangle } from "lucide-react";
+import { useIndexerHealth } from "@/hooks/use-indexer-health";
 import {
   Tooltip,
   TooltipContent,
@@ -59,6 +60,7 @@ export const TradingPanelNew = ({
     tokenType === "yes" ? (yesBalance ?? 0) : (noBalance ?? 0);
   const session = useWalletSession();
   const { send, isSending } = useSendTransaction();
+  const { indexerOk } = useIndexerHealth();
 
   useEffect(() => {
     if (selectedTokenType) {
@@ -147,32 +149,34 @@ export const TradingPanelNew = ({
         // price is in micro-USDC: 50¢ → 0.5 * 1_000_000 = 500_000.
         console.log("amountInput: ", amountInput);
         console.log("limitPriceNum: ", limitPriceNum);
-        const ix = await buildLimitOrderInstruction({
+        const ixs = await buildLimitOrderInstruction({
           userSigner: signer,
           marketId: numericMarketId,
           tokenType: outcomeToken,
           orderSide,
-          quantity: BigInt(Math.round(amountInput * PRICE_SCALE)), // whole token units (10 = 10 tokens)
-          price: BigInt(Math.round(limitPriceNum * 10_000)), // 100_000 bcoz we are taking cent // 50¢ → 500_000 micro-USDC
+          quantity: BigInt(Math.round(amountInput * PRICE_SCALE)),
+          price: BigInt(Math.round(limitPriceNum * 10_000)),
         });
-        const sig = await send({ instructions: [ix], authority: signer });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sig = await send({ instructions: ixs as any[], authority: signer });
         toast.success(`Limit ${action} order placed!`, {
           description: `${amountInput.toFixed(2)} ${outcomeToken} shares @ ${limitPriceNum}¢ — tx: ${String(sig).slice(0, 8)}…`,
         });
       } else {
         // Market BUY:  amountInput is USDC dollars → send micro-USDC (× PRICE_SCALE)
         // Market SELL: amountInput is token count  → send whole token units (no scaling)
-        const ix = await buildMarketOrderInstruction({
+        const ixs = await buildMarketOrderInstruction({
           userSigner: signer,
           marketId: numericMarketId,
           tokenType: outcomeToken,
           orderSide,
           orderAmount:
             orderSide === "BUY"
-              ? BigInt(Math.round(amountInput * PRICE_SCALE)) // USDC → micro-USDC
-              : BigInt(Math.round(amountInput * PRICE_SCALE)), // shares → base units (1 share = 1_000_000)
+              ? BigInt(Math.round(amountInput * PRICE_SCALE))
+              : BigInt(Math.round(amountInput * PRICE_SCALE)),
         });
-        const sig = await send({ instructions: [ix], authority: signer });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sig = await send({ instructions: ixs as any[], authority: signer });
         toast.success(`Market ${action} filled!`, {
           description: `${action === "buy" ? "Spent" : "Sold"} ${amountInput.toFixed(2)} ${action === "buy" ? "USDC on" : outcomeToken + " tokens for"} ${outcomeToken} — tx: ${String(sig).slice(0, 8)}…`,
         });
@@ -314,6 +318,14 @@ export const TradingPanelNew = ({
       </div>
 
       <div className="p-4 space-y-4">
+        {/* Indexer offline banner */}
+        {!indexerOk && (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span>System is syncing, trading is temporarily paused</span>
+          </div>
+        )}
+
         {/* Tab bar — underline style */}
         <div className="flex border-b border-border">
           {orderTypes.map((type) => (
@@ -591,7 +603,7 @@ export const TradingPanelNew = ({
             {/* CTA */}
             <button
               onClick={handleTrade}
-              disabled={!amount || parseFloat(amount) <= 0 || isSending}
+              disabled={!indexerOk || !amount || parseFloat(amount) <= 0 || isSending}
               className={cn(
                 "w-full py-3 rounded-lg font-semibold text-sm text-white transition-all duration-150",
                 "disabled:opacity-40 disabled:cursor-not-allowed",
@@ -714,11 +726,11 @@ export const TradingPanelNew = ({
               {/* CTA */}
               <button
                 onClick={handleMerge}
-                disabled={!hasEnough || isSending}
+                disabled={!indexerOk || !hasEnough || isSending}
                 className={cn(
                   "w-full py-3 rounded-lg font-semibold text-sm text-white transition-all duration-150",
                   "disabled:opacity-40 disabled:cursor-not-allowed",
-                  "bg-amber-500 hover:brightness-110 shadow-sm shadow-amber-500/20"
+                  "bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-600/20"
                 )}
               >
                 <span className="flex items-center justify-center gap-2">
@@ -821,7 +833,7 @@ export const TradingPanelNew = ({
               {/* CTA */}
               <button
                 onClick={handleSplit}
-                disabled={!hasEnough || isSending}
+                disabled={!indexerOk || !hasEnough || isSending}
                 className={cn(
                   "w-full py-3 rounded-lg font-semibold text-sm text-white transition-all duration-150",
                   "disabled:opacity-40 disabled:cursor-not-allowed",

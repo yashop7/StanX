@@ -29,6 +29,7 @@ import { USDC_FAUCET_URL } from '@/lib/constants';
 import { Droplets } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import { useIndexerHealth } from '@/hooks/use-indexer-health';
 
 export const Header = () => {
   const wallet = useWalletSession();
@@ -36,11 +37,12 @@ export const Header = () => {
   const { usdcBalance, loading: usdcLoading } = useUsdcBalance();
   const isLoggedIn = !!wallet;
   const pathname = usePathname();
+  const { health, indexerOk } = useIndexerHealth();
 
   const shortenAddress = (address: string) =>
     `${address.slice(0, 4)}...${address.slice(-4)}`;
 
-  const navLinks = [];
+  const navLinks: { href: string; label: string }[] = [];
 
   return (
     <header className="sticky top-0 z-50 w-full navbar-blur border-b border-border">
@@ -74,6 +76,31 @@ export const Header = () => {
 
         {/* Right side */}
         <div className="flex items-center gap-2">
+          {/* Indexer health dot — only shown once we have a response */}
+          {health !== null && (
+            <div
+              title={
+                indexerOk
+                  ? `Indexer live · ${health.seconds_since_heartbeat}s ago`
+                  : 'Indexer offline — trading paused'
+              }
+              className={cn(
+                'hidden md:flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium border',
+                indexerOk
+                  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                  : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+              )}
+            >
+              <span
+                className={cn(
+                  'h-1.5 w-1.5 rounded-full',
+                  indexerOk ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
+                )}
+              />
+              {indexerOk ? 'Live' : 'Syncing'}
+            </div>
+          )}
+
           {isLoggedIn ? (
             <>
               {/* USDC balance chip */}

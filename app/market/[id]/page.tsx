@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
-import { useWalletSession } from '@solana/react-hooks';
+import { useWalletSession, useSendTransaction } from '@solana/react-hooks';
+import { createWalletTransactionSigner } from '@solana/client';
+import { toast } from 'sonner';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
 import { TradingChartRecharts } from '@/components/TradingChartRecharts';
@@ -10,17 +12,28 @@ import { TradingPanelNew } from '@/components/TradingPanelNew';
 import { OrderBook } from '@/components/OrderBook';
 import { OnChainOrderBook } from '@/components/OnChainOrderBook';
 import { MarketSwitcher } from '@/components/MarketSwitcher';
-import { CommentsSection } from '@/components/CommentsSection';
 import { PageTransition } from '@/components/PageTransition';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Share2, Bookmark, TrendingUp, Clock, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Share2, Bookmark, TrendingUp, Clock, Loader2, AlertCircle, Lock, Trophy, CheckCircle2, XCircle, MinusCircle } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { formatDistanceToNow } from 'date-fns';
 import { getMarketByIdAction, getMarketsAction } from '@/app/markets/actions';
 import type { DisplayMarket } from '@/lib/blockchain/markets';
 import { UserStatsCard } from '@/components/UserStatsCard';
+import { buildCloseMarketInstruction, buildClaimRewardsInstruction, buildSetWinnerInstruction } from '@/lib/blockchain/market';
 import { fetchMarketTrades, toDisplayPrice, toDisplayQty } from '@/lib/api/backend';
 import type { BackendTrade } from '@/lib/api/backend';
 
@@ -39,6 +52,8 @@ const MarketDetail = () => {
   const [selectedTokenType, setSelectedTokenType] = useState<'yes' | 'no'>('yes');
   const walletSession = useWalletSession();
   const userPubkey = walletSession?.account?.address as string | undefined;
+  const { send } = useSendTransaction();
+  const [actionBusy, setActionBusy] = useState<'close' | 'claim' | 'set-winner' | null>(null);
 
   const [marketTrades, setMarketTrades] = useState<BackendTrade[]>([]);
 
@@ -81,6 +96,91 @@ const MarketDetail = () => {
     const interval = setInterval(loadTrades, 15_000);
     return () => clearInterval(interval);
   }, [loadTrades]);
+
+  /** Extract a human-readable message from a Solana transaction error. */
+  function describeTxError(e: unknown): string {
+    if (!(e instanceof Error)) return String(e);
+    // Walk the error chain looking for a program Custom error code
+    const stack: unknown[] = [e];
+    while (stack.length) {
+      const node: unknown = stack.pop();
+      if (!node || typeof node !== 'object') continue;
+      const obj = node as Record<string, unknown>;
+      // @solana/kit SolanaError stores context.code for program errors
+      if (typeof obj['code'] === 'number') {
+        const code: number = obj['code'];
+        // Map our known program error codes to friendly messages
+        const KNOWN: Record<number, string> = {
+          0x1771: 'Invalid settlement deadline',
+          0x1772: 'Market already settled',
+          0x1773: 'Market has expired',
+          0x177a: 'Market is not settled yet',
+          0x177b: 'Winning outcome is not set yet',
+          0x1780: 'Not authorized — wallet must be the market creator',
+          0x178b: 'Settlement deadline has not been reached yet — market is still live',
+        };
+        if (KNOWN[code]) return KNOWN[code];
+      }
+      // Also check transactionPlanResult for nested errors
+      if (obj['transactionPlanResult']) stack.push(obj['transactionPlanResult']);
+      if (obj['cause']) stack.push(obj['cause']);
+      if (obj['context']) stack.push(obj['context']);
+    }
+    return (e as Error).message;
+  }
+
+  async function handleSetWinner(outcome: 'YES' | 'NO' | 'NEITHER') {
+    if (!walletSession) { toast.error('Connect your wallet first.'); return; }
+    if (market && new Date() < market.endDate) {
+      toast.error('Settlement deadline not reached', {
+        description: `The market closes ${formatDistanceToNow(market.endDate, { addSuffix: true })}. You can resolve it after that.`,
+      });
+      return;
+    }
+    setActionBusy('set-winner');
+    try {
+      const { signer } = createWalletTransactionSigner(walletSession);
+      const ix = await buildSetWinnerInstruction({ userSigner: signer, marketId, outcome });
+      await send({ instructions: [ix], authority: signer });
+      toast.success(`Market resolved — ${outcome === 'NEITHER' ? 'Neither' : outcome} wins!`);
+      load();
+    } catch (e) {
+      toast.error('Failed to set winner', { description: describeTxError(e) });
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  async function handleCloseMarket() {
+    if (!walletSession) { toast.error('Connect your wallet first.'); return; }
+    setActionBusy('close');
+    try {
+      const { signer } = createWalletTransactionSigner(walletSession);
+      const ix = await buildCloseMarketInstruction({ userSigner: signer, marketId });
+      await send({ instructions: [ix], authority: signer });
+      toast.success('Market closed successfully.');
+      load();
+    } catch (e) {
+      toast.error('Close failed', { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  async function handleClaimRewards() {
+    if (!walletSession) { toast.error('Connect your wallet first.'); return; }
+    setActionBusy('claim');
+    try {
+      const { signer } = createWalletTransactionSigner(walletSession);
+      const ix = await buildClaimRewardsInstruction({ userSigner: signer, marketId });
+      await send({ instructions: [ix], authority: signer });
+      toast.success('Rewards claimed successfully!');
+    } catch (e) {
+      toast.error('Claim failed', { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setActionBusy(null);
+    }
+  }
 
   const formatVolume = (v: number) => {
     if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
@@ -270,7 +370,6 @@ const MarketDetail = () => {
                       </span>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="comments" className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">Comments</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="about" className="space-y-4 mt-4">
@@ -289,8 +388,15 @@ const MarketDetail = () => {
                   {market.metaDataUrl && (
                     <Card className="panel-card">
                       <CardContent className="pt-5 pb-5">
-                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">On-chain Metadata URL</h4>
-                        <p className="text-xs font-mono text-muted-foreground break-all">{market.metaDataUrl}</p>
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">On-chain Metadata</h4>
+                        <a
+                          href={market.metaDataUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-mono text-primary hover:underline break-all"
+                        >
+                          {market.metaDataUrl}
+                        </a>
                       </CardContent>
                     </Card>
                   )}
@@ -345,9 +451,6 @@ const MarketDetail = () => {
                   </Card>
                 </TabsContent>
 
-                <TabsContent value="comments" className="mt-4">
-                  <CommentsSection />
-                </TabsContent>
               </Tabs>
             </div>
 
@@ -371,6 +474,141 @@ const MarketDetail = () => {
                   outcomeYesMint={market.outcomeYesMint}
                   outcomeNoMint={market.outcomeNoMint}
                 />
+
+                {/* ── Creator Actions Panel ───────────────────────────── */}
+                {userPubkey === market.authority && (
+                  <div className="panel-card p-5 space-y-4">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      Creator Actions
+                    </h4>
+
+                    {/* Resolve Market — only if not settled yet */}
+                    {!market.isSettled ? (() => {
+                      const deadlinePassed = new Date() >= market.endDate;
+                      return (
+                        <div className="space-y-2">
+                          {deadlinePassed ? (
+                            <p className="text-[11px] text-muted-foreground">
+                              Select the outcome to resolve this market. This action is irreversible.
+                            </p>
+                          ) : (
+                            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                              <Clock className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
+                              <p className="text-[11px] text-amber-400 leading-snug">
+                                Settlement deadline not reached yet. You can resolve{' '}
+                                <span className="font-semibold">{formatDistanceToNow(market.endDate, { addSuffix: true })}</span>.
+                              </p>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-3 gap-2">
+                            {(['YES', 'NO', 'NEITHER'] as const).map((outcome) => {
+                              const Icon = outcome === 'YES' ? CheckCircle2 : outcome === 'NO' ? XCircle : MinusCircle;
+                              const label = outcome === 'NEITHER' ? 'Neither' : outcome;
+                              const colorClass = deadlinePassed
+                                ? outcome === 'YES' ? 'border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/60' :
+                                  outcome === 'NO'  ? 'border-red-500/40 text-red-400 hover:bg-red-500/10 hover:border-red-500/60' :
+                                                      'border-border/40 text-muted-foreground hover:bg-muted/20'
+                                : 'border-border/20 text-muted-foreground/40 cursor-not-allowed';
+                              return (
+                                <AlertDialog key={outcome}>
+                                  <AlertDialogTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={actionBusy !== null || !deadlinePassed}
+                                      className={`gap-1.5 text-xs font-semibold ${colorClass}`}
+                                    >
+                                      <Icon className="h-3.5 w-3.5" />
+                                      {label}
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Resolve market as "{label} wins"?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        This will settle the market on-chain and allow winners to claim rewards.
+                                        This action cannot be undone.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => handleSetWinner(outcome)}
+                                        className={outcome === 'YES' ? 'bg-emerald-600 hover:bg-emerald-500' : outcome === 'NO' ? 'bg-red-600 hover:bg-red-500' : ''}
+                                      >
+                                        {actionBusy === 'set-winner'
+                                          ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Setting…</>
+                                          : `Confirm — ${label} Wins`
+                                        }
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })() : (
+                      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/20 border border-border/30">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                        <span className="text-xs text-muted-foreground">
+                          Market resolved —{' '}
+                          <span className="font-semibold text-foreground">
+                            {market.winningOutcome === 'YES' ? 'YES wins' : market.winningOutcome === 'NO' ? 'NO wins' : 'Neither wins'}
+                          </span>
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Divider */}
+                    <div className="border-t border-border/20" />
+
+                    {/* Close Market */}
+                    <div className="space-y-1.5">
+                      <p className="text-[11px] text-muted-foreground">
+                        Permanently closes the market account and reclaims rent. Requires settlement, all orders cancelled, and all rewards claimed.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2 border-border/40 text-muted-foreground hover:text-foreground"
+                        disabled={actionBusy !== null}
+                        onClick={handleCloseMarket}
+                      >
+                        {actionBusy === 'close'
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <Lock className="h-4 w-4" />
+                        }
+                        {actionBusy === 'close' ? 'Closing…' : 'Close Market'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Claim Rewards — any user when winner is set ──────── */}
+                {market.isSettled && market.winningOutcome && market.winningOutcome !== 'NEITHER' && (
+                  <div className="panel-card p-5 space-y-3">
+                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                      <Trophy className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                      <span className="text-xs text-emerald-400 font-semibold">
+                        {market.winningOutcome === 'YES' ? 'YES' : 'NO'} wins — claim your rewards
+                      </span>
+                    </div>
+                    <Button
+                      className="w-full gap-2 bg-emerald-600 hover:bg-emerald-500 text-white"
+                      disabled={actionBusy !== null}
+                      onClick={handleClaimRewards}
+                    >
+                      {actionBusy === 'claim'
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <Trophy className="h-4 w-4" />
+                      }
+                      {actionBusy === 'claim' ? 'Claiming…' : 'Claim Rewards'}
+                    </Button>
+                  </div>
+                )}
 
                 {/* Market Info */}
                 <div className="panel-card p-5 space-y-4">

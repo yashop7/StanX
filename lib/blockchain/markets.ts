@@ -40,6 +40,7 @@ const MARKET_SEED = new Uint8Array([109, 97, 114, 107, 101, 116]);
 export interface DisplayMarket {
   address: string;
   marketId: number;                            // on-chain u32, used in URLs
+  authority: string;                           // market creator's pubkey
   collateralMint: string;                      // SPL token mint used as collateral
   outcomeYesMint: string;                      // SPL mint for YES outcome tokens
   outcomeNoMint: string;                       // SPL mint for NO outcome tokens
@@ -49,6 +50,7 @@ export interface DisplayMarket {
   volume: number;                              // USDC (totalCollateralLocked / 1e6)
   endDate: Date;                               // from settlementDeadline
   isSettled: boolean;
+  winningOutcome: "YES" | "NO" | "NEITHER" | null; // null if not settled yet
   status: "active" | "resolved" | "ending-soon";
   metaDataUrl: string;
   image: string;
@@ -143,9 +145,17 @@ function enrichChainMarket(
   meta: OffChainMeta,
 ): DisplayMarket {
   const yesPrice = deriveYesPrice(book);
+  const wo = data.winningOutcome;
+  const winningOutcome: DisplayMarket["winningOutcome"] =
+    wo.__option === "Some"
+      ? wo.value === 0 ? "YES"
+        : wo.value === 1 ? "NO"
+        : "NEITHER"
+      : null;
   return {
     address: address as string,
     marketId: data.marketId,
+    authority: data.authority as string,
     collateralMint: data.collateralMint as string,
     outcomeYesMint: data.outcomeYesMint as string,
     outcomeNoMint: data.outcomeNoMint as string,
@@ -155,6 +165,7 @@ function enrichChainMarket(
     volume: Number(data.totalCollateralLocked) / USDC_SCALE,
     endDate: new Date(Number(data.settlementDeadline) * 1000),
     isSettled: data.isSettled,
+    winningOutcome,
     status: deriveStatus(data),
     metaDataUrl: data.metaDataUrl,
     image: meta.image ?? `https://picsum.photos/seed/${data.marketId}/800/600`,
