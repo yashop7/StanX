@@ -1,180 +1,327 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  TooltipProps,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  CartesianGrid, TooltipProps,
 } from "recharts";
 import { format } from "date-fns";
+import { Loader2, TrendingDown, TrendingUp } from "lucide-react";
+import { fetchMarketPrices, BACKEND_PRICE_SCALE } from "@/lib/api/backend";
+import type { PricePeriod } from "@/lib/api/backend";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface TradingChartRechartsProps {
-  data: { time: number; value: number }[];
+  marketId: number;
+  token?: "yes" | "no";
+  /** Total USDC volume to display in the footer */
+  volume?: number;
 }
 
-type TimePeriod = "1H" | "6H" | "1D" | "1W" | "1M" | "3M" | "ALL";
+interface Point { time: number; value: number }
 
-const CustomTooltip = ({
-  active,
-  payload,
-  label,
-}: TooltipProps<number, string>) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="rounded-lg border border-border/30 dark:border-border/20 bg-background dark:bg-[hsl(240,6%,8%)] p-3 shadow-lg">
-        <div className="text-sm font-semibold mb-1">
-          {format(new Date(label), "MMM dd, yyyy HH:mm")}
-        </div>
-        <div className="flex items-center gap-2 text-sm">
-          <div className="w-3 h-3 rounded-full bg-primary" />
-          <span className="text-muted-foreground">Price:</span>
-          <span className="font-semibold">{payload[0].value}%</span>
-        </div>
-      </div>
-    );
-  }
-  return null;
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const PERIODS: PricePeriod[] = ["1H", "6H", "1D", "1W", "1M", "3M", "ALL"];
+
+// Flat 50¢ baseline shown when there is no real history
+function flat50(): Point[] {
+  const now = Date.now();
+  return [
+    { time: now - 7 * 86_400_000, value: 50 },
+    { time: now,                   value: 50 },
+  ];
+}
+
+function formatVolume(v: number) {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000)     return `$${(v / 1_000).toFixed(1)}K`;
+  return `$${v.toFixed(0)}`;
+}
+
+// ── X-axis label formatter ────────────────────────────────────────────────────
+
+function fmtX(ts: number, period: PricePeriod): string {
+  const d = new Date(ts);
+  if (period === "1H")                         return format(d, "HH:mm");
+  if (period === "6H" || period === "1D")      return format(d, "HH:mm");
+  if (period === "1W")                         return format(d, "MMM d");
+  return format(d, "MMM d");
+}
+
+// ── Custom tooltip ────────────────────────────────────────────────────────────
+
+const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
+  if (!active || !payload?.length) return null;
+  const val = payload[0].value as number;
+  const d   = new Date(label as number);
+  return (
+    <div className="bg-[#0d0d0f]/95 border border-white/10 rounded-lg px-3 py-2.5 shadow-2xl backdrop-blur-sm">
+      <p className="text-[10px] text-white/35 font-mono mb-1 uppercase tracking-wider">
+        {format(d, "MMM d, yyyy")}
+        <span className="ml-1.5 text-white/20">·</span>
+        <span className="ml-1.5">{format(d, "HH:mm")}</span>
+      </p>
+      <p className="text-[1.1rem] font-bold text-white tabular-nums leading-none">
+        {val.toFixed(1)}
+        <span className="text-sm font-normal text-white/40 ml-0.5">¢</span>
+      </p>
+    </div>
+  );
 };
 
-export const TradingChartRecharts = ({ data }: TradingChartRechartsProps) => {
-  const [timePeriod, setTimePeriod] = useState<TimePeriod>("1D");
+// ── Glowing dot at the last data point ───────────────────────────────────────
 
-  // Filter data based on time period
-  const getFilteredData = () => {
-    const now = Date.now();
-    const periods: Record<TimePeriod, number> = {
-      "1H": 60 * 60 * 1000,
-      "6H": 6 * 60 * 60 * 1000,
-      "1D": 24 * 60 * 60 * 1000,
-      "1W": 7 * 24 * 60 * 60 * 1000,
-      "1M": 30 * 24 * 60 * 60 * 1000,
-      "3M": 90 * 24 * 60 * 60 * 1000,
-      ALL: Infinity,
-    };
+function makeDotRenderer(dataLen: number, color: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return function TradeDot(props: any) {
+    const { cx, cy, index } = props;
+    const isLast = index === dataLen - 1;
 
-    const cutoff = now - periods[timePeriod];
-    return data
-      .filter((d) => d.time >= cutoff)
-      .map((d) => ({
-        time: d.time,
-        value: d.value * 100,
-      }));
+    if (isLast) {
+      // Glowing live-price dot at the last (current) point
+      return (
+        <g key={`dot-last-${index}`}>
+          <circle cx={cx} cy={cy} r={10} fill={color} fillOpacity={0.12} />
+          <circle cx={cx} cy={cy} r={6}  fill={color} fillOpacity={0.28} />
+          <circle cx={cx} cy={cy} r={3.5} fill={color} stroke="#0d0d0f" strokeWidth={1.5} />
+        </g>
+      );
+    }
+
+    // Regular dot at each intermediate trade point
+    return (
+      <g key={`dot-${index}`}>
+        <circle cx={cx} cy={cy} r={3} fill="#0d0d0f" stroke={color} strokeWidth={1.5} />
+      </g>
+    );
   };
+}
 
-  const chartData = getFilteredData();
-  const currentValue = chartData[chartData.length - 1]?.value || 0;
-  const previousValue = chartData[0]?.value || 0;
-  const change = currentValue - previousValue;
-  const changePercent = previousValue > 0 ? (change / previousValue) * 100 : 0;
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export const TradingChartRecharts = ({
+  marketId,
+  token = "yes",
+  volume,
+}: TradingChartRechartsProps) => {
+  const [period,      setPeriod]      = useState<PricePeriod>("ALL");
+  const [chartData,   setChartData]   = useState<Point[]>([]);
+  const [hasRealData, setHasRealData] = useState(false);
+  const [isLoading,   setIsLoading]   = useState(true);
+
+  const loadPrices = useCallback(async (p: PricePeriod) => {
+    setIsLoading(true);
+    try {
+      const points = await fetchMarketPrices(marketId, token, p);
+      if (points.length > 0) {
+        setChartData(points.map(pt => ({
+          time:  pt.t,
+          // raw price e.g. "600000" → 600000 / 10000 = 60 (¢)
+          value: parseFloat(pt.p) / BACKEND_PRICE_SCALE,
+        })));
+        setHasRealData(true);
+      } else {
+        setChartData(flat50());
+        setHasRealData(false);
+      }
+    } catch {
+      setChartData(flat50());
+      setHasRealData(false);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [marketId, token]);
+
+  useEffect(() => { loadPrices(period); }, [loadPrices, period]);
+
+  // ── Derived values ──────────────────────────────────────────────────────────
+
+  const current    = chartData[chartData.length - 1]?.value ?? 50;
+  const first      = chartData[0]?.value ?? 50;
+  const change     = hasRealData ? current - first : 0;
+  const changePct  = hasRealData && first > 0 ? (change / first) * 100 : 0;
+  const isUp       = change >= 0;
+
+  const lineColor  = !hasRealData
+    ? "rgba(255,255,255,0.15)"
+    : isUp ? "#22c55e" : "#ef4444";
+
+  const gradId = `pg-${marketId}-${token}`;
+
+  // Y domain: padded so the line isn't flush against edges
+  const yDomain = useMemo((): [number, number] => {
+    if (!hasRealData) return [0, 100];
+    const vals = chartData.map(d => d.value);
+    const lo = Math.min(...vals);
+    const hi = Math.max(...vals);
+    const pad = Math.max((hi - lo) * 0.25, 4);
+    return [Math.max(0, Math.floor(lo - pad)), Math.min(100, Math.ceil(hi + pad))];
+  }, [chartData, hasRealData]);
+
+  const GlowDot = useMemo(
+    () => makeDotRenderer(chartData.length, lineColor),
+    [chartData.length, lineColor]
+  );
 
   return (
-    <Card className="panel-card">
-      <CardHeader>
-        <div className="flex items-center justify-between">
+    <div className="panel-card overflow-hidden">
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className="px-5 pt-5 pb-3">
+        <div className="flex items-start justify-between gap-2">
           <div>
-            <h3 className="font-serif text-2xl font-bold">Price History</h3>
-            <div className="flex items-center gap-3 mt-1">
-              <span className="text-3xl font-bold">
-                {currentValue.toFixed(1)}%
+            {/* Price */}
+            <div className="flex items-baseline gap-2">
+              <span className="text-[2.4rem] font-bold tabular-nums tracking-tight leading-none text-foreground">
+                {current.toFixed(1)}
               </span>
-              <span
-                className={`text-sm font-medium ${change >= 0 ? "text-emerald-500" : "text-red-500"}`}
-              >
-                {change >= 0 ? "+" : ""}
-                {change.toFixed(2)}% ({changePercent >= 0 ? "+" : ""}
-                {changePercent.toFixed(2)}%)
-              </span>
+              <span className="text-base text-muted-foreground/50 font-mono leading-none mb-0.5">¢</span>
+
+              {/* Change badge */}
+              {hasRealData && (
+                <span className={`flex items-center gap-1 text-sm font-semibold tabular-nums leading-none ${isUp ? "text-emerald-400" : "text-red-400"}`}>
+                  {isUp
+                    ? <TrendingUp  className="h-3.5 w-3.5" />
+                    : <TrendingDown className="h-3.5 w-3.5" />
+                  }
+                  {isUp ? "+" : ""}{change.toFixed(1)}¢
+                  <span className="text-[10px] font-normal opacity-60">
+                    ({isUp ? "+" : ""}{changePct.toFixed(1)}%)
+                  </span>
+                </span>
+              )}
+
+              {/* Baseline label */}
+              {!hasRealData && !isLoading && (
+                <span className="text-xs text-muted-foreground/25 font-mono">baseline · no trades yet</span>
+              )}
             </div>
+
+            {/* Sub-label */}
+            <p className="text-[10px] font-mono font-semibold uppercase tracking-[0.13em] text-muted-foreground/40 mt-1.5">
+              {token.toUpperCase()} probability
+            </p>
           </div>
 
-          <Tabs
-            value={timePeriod}
-            onValueChange={(v) => setTimePeriod(v as TimePeriod)}
+          {/* Loading spinner */}
+          {isLoading && (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground/30 mt-1 shrink-0" />
+          )}
+        </div>
+      </div>
+
+      {/* ── Chart ──────────────────────────────────────────────────────────── */}
+      <div className="h-[280px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart
+            data={chartData}
+            margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
           >
-            <TabsList className="bg-muted/20 dark:bg-muted/10 border border-border/20 dark:border-border/10">
-              <TabsTrigger value="1H" className="cursor-pointer text-xs px-3">
-                1H
-              </TabsTrigger>
-              <TabsTrigger value="6H" className="cursor-pointer text-xs px-3">
-                6H
-              </TabsTrigger>
-              <TabsTrigger value="1D" className="cursor-pointer text-xs px-3">
-                1D
-              </TabsTrigger>
-              <TabsTrigger value="1W" className="cursor-pointer text-xs px-3">
-                1W
-              </TabsTrigger>
-              <TabsTrigger value="1M" className="cursor-pointer text-xs px-3">
-                1M
-              </TabsTrigger>
-              <TabsTrigger value="3M" className="cursor-pointer text-xs px-3">
-                3M
-              </TabsTrigger>
-              <TabsTrigger value="ALL" className="cursor-pointer text-xs px-3">
-                ALL
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+            <defs>
+              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%"   stopColor={lineColor} stopOpacity={hasRealData ? 0.18 : 0.04} />
+                <stop offset="80%"  stopColor={lineColor} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+
+            {/* Dotted horizontal grid — Kalshi style */}
+            <CartesianGrid
+              horizontal
+              vertical={false}
+              stroke="rgba(255,255,255,0.045)"
+              strokeDasharray="2 5"
+            />
+
+            {/* X-axis: dates */}
+            <XAxis
+              dataKey="time"
+              type="number"
+              scale="time"
+              domain={["dataMin", "dataMax"]}
+              tickFormatter={(v) => fmtX(v, period)}
+              stroke="transparent"
+              tick={{
+                fill: "rgba(255,255,255,0.28)",
+                fontSize: 11,
+                fontFamily: "monospace",
+              }}
+              tickLine={false}
+              axisLine={false}
+              minTickGap={52}
+              dy={6}
+            />
+
+            {/* Y-axis: prices in ¢ — RIGHT side, like Kalshi */}
+            <YAxis
+              orientation="right"
+              domain={yDomain}
+              tickFormatter={(v: number) => `${v.toFixed(0)}`}
+              stroke="transparent"
+              tick={{
+                fill: "rgba(255,255,255,0.28)",
+                fontSize: 11,
+                fontFamily: "monospace",
+              }}
+              tickLine={false}
+              axisLine={false}
+              width={42}
+              tickCount={5}
+            />
+
+            <Tooltip
+              content={hasRealData ? <CustomTooltip /> : <></>}
+              cursor={hasRealData
+                ? { stroke: "rgba(255,255,255,0.12)", strokeWidth: 1 }
+                : false
+              }
+            />
+
+            <Area
+              type="monotone"
+              dataKey="value"
+              stroke={lineColor}
+              strokeWidth={hasRealData ? 2 : 1.5}
+              strokeDasharray={hasRealData ? undefined : "6 4"}
+              fill={`url(#${gradId})`}
+              dot={hasRealData ? <GlowDot /> : false}
+              activeDot={hasRealData
+                ? { r: 4, fill: lineColor, stroke: "#0d0d0f", strokeWidth: 2 }
+                : false
+              }
+              isAnimationActive={false}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* ── Footer: volume (left) + period selector (right) ──────────────── */}
+      <div className="flex items-center justify-between px-5 py-3 border-t border-border/[0.08]">
+        {/* Volume */}
+        <span className="text-[11px] text-muted-foreground/35 font-mono">
+          {volume != null && volume > 0
+            ? <>{formatVolume(volume)} vol</>
+            : <span className="text-muted-foreground/20">no volume data</span>
+          }
+        </span>
+
+        {/* Period buttons */}
+        <div className="flex items-center gap-0.5">
+          {PERIODS.map((p) => (
+            <button
+              key={p}
+              onClick={() => setPeriod(p)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                period === p
+                  ? "text-foreground font-bold"
+                  : "text-muted-foreground/35 hover:text-muted-foreground/70"
+              }`}
+            >
+              {p}
+            </button>
+          ))}
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="h-[400px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <defs>
-                <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                  <stop
-                    offset="5%"
-                    stopColor="hsl(var(--primary))"
-                    stopOpacity={0.3}
-                  />
-                  <stop
-                    offset="95%"
-                    stopColor="hsl(var(--primary))"
-                    stopOpacity={0}
-                  />
-                </linearGradient>
-              </defs>
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="hsl(var(--border))"
-                vertical={false}
-              />
-              <XAxis
-                dataKey="time"
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={11}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(value) => format(new Date(value), "HH:mm")}
-              />
-              <YAxis
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={11}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(value) => `${value}%`}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke="hsl(var(--primary))"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Info, ArrowDownUp, Coins, Zap, Layers, Loader2, AlertTriangle } from "lucide-react";
+import { Info, ArrowDownUp, Coins, Zap, Layers, Loader2, AlertTriangle, Trophy, Lock } from "lucide-react";
 import { useIndexerHealth } from "@/hooks/use-indexer-health";
 import {
   Tooltip,
@@ -31,6 +31,8 @@ interface TradingPanelNewProps {
   outcomeNoMint?: string;
   selectedTokenType?: "yes" | "no";
   onTokenTypeChange?: (value: "yes" | "no") => void;
+  isSettled?: boolean;
+  winningOutcome?: "YES" | "NO" | "NEITHER" | null;
 }
 
 type OrderType = "market" | "limit" | "merge" | "split";
@@ -44,6 +46,8 @@ export const TradingPanelNew = ({
   outcomeNoMint,
   selectedTokenType,
   onTokenTypeChange,
+  isSettled,
+  winningOutcome,
 }: TradingPanelNewProps) => {
   const [orderType, setOrderType] = useState<OrderType>("market");
   const [action, setAction] = useState<"buy" | "sell">("buy");
@@ -308,16 +312,63 @@ export const TradingPanelNew = ({
         </h3>
         {/* price pills */}
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-success/10 text-success">
+          <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-success/10 text-success">
             Y {(yesPrice * 100).toFixed(0)}¢
           </span>
-          <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-danger/10 text-danger">
+          <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-danger/10 text-danger">
             N {(noPrice * 100).toFixed(0)}¢
           </span>
         </div>
       </div>
 
       <div className="p-4 space-y-4">
+        {/* ── Market Settled banner ── */}
+        {isSettled && (
+          <div className="space-y-4">
+            <div className="flex flex-col items-center gap-3 py-4">
+              <div className={cn(
+                "h-12 w-12 rounded-full flex items-center justify-center",
+                winningOutcome === "YES" ? "bg-success/15" :
+                winningOutcome === "NO" ? "bg-danger/15" : "bg-muted/30"
+              )}>
+                <Trophy className={cn(
+                  "h-6 w-6",
+                  winningOutcome === "YES" ? "text-success" :
+                  winningOutcome === "NO" ? "text-danger" : "text-muted-foreground"
+                )} />
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-sm font-semibold">Market Resolved</p>
+                <p className="text-xs text-muted-foreground">
+                  {winningOutcome === "YES" ? "YES wins — YES token holders can claim $1 per token" :
+                   winningOutcome === "NO" ? "NO wins — NO token holders can claim $1 per token" :
+                   winningOutcome === "NEITHER" ? "Neither outcome won — collateral returned proportionally" :
+                   "This market has been settled"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-muted/20 border border-border/30 text-xs text-muted-foreground">
+              <Lock className="h-3.5 w-3.5 shrink-0" />
+              <span>New orders and splitting are disabled. You can still merge token pairs back into USDC.</span>
+            </div>
+            {/* Show merge tab when settled */}
+            <button
+              onClick={() => setOrderType("merge")}
+              className={cn(
+                "w-full py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all",
+                orderType === "merge"
+                  ? "bg-muted/30 border border-border text-foreground"
+                  : "border border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
+              )}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              Merge Tokens → USDC
+            </button>
+          </div>
+        )}
+
+        {/* ── Active trading UI (hidden when settled, except merge) ── */}
+        {!isSettled && (<>
         {/* Indexer offline banner */}
         {!indexerOk && (
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
@@ -444,7 +495,7 @@ export const TradingPanelNew = ({
               <div className="space-y-1.5">
                 <Label
                   htmlFor="limit-price"
-                  className="text-[11px] text-muted-foreground font-medium"
+                  className="text-xs text-muted-foreground font-medium"
                 >
                   Limit Price (¢)
                 </Label>
@@ -464,7 +515,7 @@ export const TradingPanelNew = ({
               <div className="flex items-center justify-between">
                 <Label
                   htmlFor="amount"
-                  className="text-[11px] text-muted-foreground font-medium"
+                  className="text-xs text-muted-foreground font-medium"
                 >
                   {isLimit
                     ? action === "buy"
@@ -623,8 +674,9 @@ export const TradingPanelNew = ({
             </button>
           </>
         )}
+        </>)}
 
-        {/* Merge Order Content */}
+        {/* Merge Order Content — allowed even when settled */}
         {orderType === "merge" && (() => {
           const yesHeld = yesBalance ?? 0;
           const noHeld = noBalance ?? 0;
@@ -746,8 +798,8 @@ export const TradingPanelNew = ({
           );
         })()}
 
-        {/* Split Order Content */}
-        {orderType === "split" && (() => {
+        {/* Split Order Content — disabled when settled */}
+        {!isSettled && orderType === "split" && (() => {
           const splitNum = parseFloat(splitAmount) || 0;
           const hasEnough = splitNum > 0 && splitNum <= balance;
 
