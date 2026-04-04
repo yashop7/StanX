@@ -30,17 +30,20 @@ import {
   type AccountMeta,
   type Address,
   type TransactionSigner,
-  type FullySignedTransaction,
-  type TransactionBlockhashLifetime,
 } from "@solana/kit";
 
 // Codama-generated instruction builders
 import { getInitializeMarketInstructionAsync } from "@/generated/instructions/initializeMarket";
+import { getCloseMarketInstruction } from "@/generated/instructions/closeMarket";
+import { getClaimRewardsInstructionAsync } from "@/generated/instructions/claimRewards";
+import { getCancelOrderInstructionAsync } from "@/generated/instructions/cancelOrder";
 import { getPlaceOrderInstructionAsync } from "@/generated/instructions/placeOrder";
 import { getMarketOrderInstructionAsync } from "@/generated/instructions/marketOrder";
 import { getSplitTokensInstructionAsync } from "@/generated/instructions/splitTokens";
 import { getMergeTokensInstruction } from "@/generated/instructions/mergeTokens";
+import { getUpdateMetadataInstruction } from "@/generated/instructions/updateMetadata";
 import { getClaimFundsInstructionAsync } from "@/generated/instructions/claimFunds";
+import { getSetWinnerInstruction } from "@/generated/instructions/setWinner";
 import {
   fetchMarket,
   fetchAllMaybeMarket,
@@ -49,7 +52,7 @@ import {
 } from "@/generated/accounts/market";
 import { fetchMaybeOrderBook } from "@/generated/accounts/orderBook";
 import { fetchMaybeUserStats, type UserStats } from "@/generated/accounts/userStats";
-import { OrderSide, TokenType } from "@/generated/types";
+import { OrderSide, TokenType, WinningOutcome } from "@/generated/types";
 import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "@/generated/programs";
 
 // Shared RPC clients
@@ -104,6 +107,7 @@ async function getMarketContext(marketId: number) {
   const { data } = await fetchMarket(rpc, marketPda);
   return { marketPda, orderbookPda, market: data };
 }
+
 
 async function deriveUserStatsPDA(marketId: number, userAddress: Address): Promise<Address> {
   const [pda] = await getProgramDerivedAddress({
@@ -169,29 +173,38 @@ export interface PlaceOrderParams {
   price: bigint;             // micro-USDC  e.g. 50¢ → 500_000
 }
 
-export async function buildLimitOrderInstruction(params: PlaceOrderParams) {
+export async function buildLimitOrderInstruction(params: PlaceOrderParams): Promise<unknown[]> {
   const { userSigner, marketId, tokenType, orderSide, quantity, price } = params;
-  console.log("price: ", price);
-  console.log("quantity: ", quantity);
-  console.log("orderSide: ", orderSide);
   const walletAddress = userSigner.address;
+
   const { marketPda, orderbookPda, market } = await getMarketContext(marketId);
 
-  const [userCollateral, userOutcomeYes, userOutcomeNo, remainingAccounts] = await Promise.all([
+  const [userCollateral, remainingAccounts] = await Promise.all([
     resolveUserTokenAccount(walletAddress, market.collateralMint),
-    resolveUserTokenAccount(walletAddress, market.outcomeYesMint),
-    resolveUserTokenAccount(walletAddress, market.outcomeNoMint),
     getCounterpartyRemainingAccounts(marketId, orderbookPda, tokenType, orderSide, walletAddress),
   ]);
 
-  const ix = await getPlaceOrderInstructionAsync({
+  // For BUY orders: outcome token ATAs must NOT be passed — they are Option<None> in the contract.
+  // Passing a non-existent ATA address would cause Anchor to fail deserialization.
+  // For SELL orders: only the relevant outcome ATA is needed (it must exist since user has tokens).
+  let userOutcomeYes: Address | undefined;
+  let userOutcomeNo: Address | undefined;
+  if (orderSide === "SELL") {
+    if (tokenType === "YES") {
+      userOutcomeYes = await resolveUserTokenAccount(walletAddress, market.outcomeYesMint);
+    } else {
+      userOutcomeNo = await resolveUserTokenAccount(walletAddress, market.outcomeNoMint);
+    }
+  }
+
+  const orderIx = await getPlaceOrderInstructionAsync({
     user:            userSigner,
     market:          marketPda,
     orderbook:       orderbookPda,
     collateralVault: market.collateralVault,
     userCollateral,
-    userOutcomeYes,
-    userOutcomeNo,
+    ...(userOutcomeYes ? { userOutcomeYes } : {}),
+    ...(userOutcomeNo  ? { userOutcomeNo  } : {}),
     yesEscrow:       market.yesEscrow,
     noEscrow:        market.noEscrow,
     marketId,
@@ -202,8 +215,11 @@ export async function buildLimitOrderInstruction(params: PlaceOrderParams) {
     maxIteration:    BigInt(10),
   });
 
-  if (remainingAccounts.length === 0) return ix;
-  return { ...ix, accounts: [...ix.accounts, ...remainingAccounts] };
+  const finalOrderIx = remainingAccounts.length === 0
+    ? orderIx
+    : { ...orderIx, accounts: [...orderIx.accounts, ...remainingAccounts] };
+
+  return [finalOrderIx];
 }
 
 // ── Split tokens (initialises userOutcomeYes + userOutcomeNo ATAs) ────────────
@@ -248,19 +264,20 @@ export interface MarketOrderParams {
   orderAmount: bigint;       // micro-USDC (buy) or micro-tokens (sell)
 }
 
-export async function buildMarketOrderInstruction(params: MarketOrderParams) {
+export async function buildMarketOrderInstruction(params: MarketOrderParams): Promise<unknown[]> {
   const { userSigner, marketId, tokenType, orderSide, orderAmount } = params;
   const walletAddress = userSigner.address;
+
   const { marketPda, orderbookPda, market } = await getMarketContext(marketId);
 
-  const [userCollateral, userOutcomeYes, userOutcomeNo, remainingAccounts] = await Promise.all([
+  const [userCollateral, remainingAccounts] = await Promise.all([
     resolveUserTokenAccount(walletAddress, market.collateralMint),
-    resolveUserTokenAccount(walletAddress, market.outcomeYesMint),
-    resolveUserTokenAccount(walletAddress, market.outcomeNoMint),
     getCounterpartyRemainingAccounts(marketId, orderbookPda, tokenType, orderSide, walletAddress),
   ]);
 
-  const ix = await getMarketOrderInstructionAsync({
+  // Market orders have init_if_needed on userOutcomeYes/No in the contract.
+  // Let the async client auto-derive them from the mints — no need to resolve manually.
+  const orderIx = await getMarketOrderInstructionAsync({
     user:            userSigner,
     market:          marketPda,
     orderbook:       orderbookPda,
@@ -268,8 +285,6 @@ export async function buildMarketOrderInstruction(params: MarketOrderParams) {
     userCollateral,
     outcomeYesMint:  market.outcomeYesMint,
     outcomeNoMint:   market.outcomeNoMint,
-    userOutcomeYes,
-    userOutcomeNo,
     yesEscrow:       market.yesEscrow,
     noEscrow:        market.noEscrow,
     marketId,
@@ -279,8 +294,62 @@ export async function buildMarketOrderInstruction(params: MarketOrderParams) {
     maxIteration:    BigInt(10),
   });
 
-  if (remainingAccounts.length === 0) return ix;
-  return { ...ix, accounts: [...ix.accounts, ...remainingAccounts] };
+  const finalOrderIx = remainingAccounts.length === 0
+    ? orderIx
+    : { ...orderIx, accounts: [...orderIx.accounts, ...remainingAccounts] };
+
+  return [finalOrderIx];
+}
+
+// ── Cancel order ─────────────────────────────────────────────────────────────
+
+export interface CancelOrderParams {
+  userSigner: TransactionSigner;
+  marketId: number;
+  orderId: bigint;
+  // The order's side and token type — needed to pass the correct optional accounts.
+  // BUY cancellations: neither outcome ATA needed (same as placing a BUY).
+  // SELL cancellations: only the relevant outcome ATA needed (it already exists).
+  orderSide: "BUY" | "SELL";
+  tokenType: "YES" | "NO";
+}
+
+export async function buildCancelOrderInstruction(params: CancelOrderParams) {
+  const { userSigner, marketId, orderId, orderSide, tokenType } = params;
+  const walletAddress = userSigner.address;
+  const { marketPda, orderbookPda, market } = await getMarketContext(marketId);
+
+  const [userCollateral, userStatsPda] = await Promise.all([
+    resolveUserTokenAccount(walletAddress, market.collateralMint),
+    deriveUserStatsPDA(marketId, walletAddress),
+  ]);
+
+  // For SELL cancellations only: pass the relevant outcome ATA (it exists since user locked tokens).
+  // For BUY cancellations: outcome ATAs are Option<None> in the contract — don't pass them.
+  let userOutcomeYes: Address | undefined;
+  let userOutcomeNo: Address | undefined;
+  if (orderSide === "SELL") {
+    if (tokenType === "YES") {
+      userOutcomeYes = await resolveUserTokenAccount(walletAddress, market.outcomeYesMint);
+    } else {
+      userOutcomeNo = await resolveUserTokenAccount(walletAddress, market.outcomeNoMint);
+    }
+  }
+
+  return getCancelOrderInstructionAsync({
+    user:               userSigner,
+    market:             marketPda,
+    orderbook:          orderbookPda,
+    collateralVault:    market.collateralVault,
+    userCollateral,
+    userStatsAccount:   userStatsPda,
+    ...(userOutcomeYes ? { userOutcomeYes } : {}),
+    ...(userOutcomeNo  ? { userOutcomeNo  } : {}),
+    yesEscrow:          market.yesEscrow,
+    noEscrow:           market.noEscrow,
+    marketId,
+    orderId,
+  });
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -495,6 +564,79 @@ export async function buildClaimFundsInstruction(params: ClaimFundsParams) {
   });
 }
 
+// ── Set winner ────────────────────────────────────────────────────────────────
+
+export interface SetWinnerParams {
+  userSigner: TransactionSigner;
+  marketId: number;
+  outcome: "YES" | "NO" | "NEITHER";
+}
+
+export async function buildSetWinnerInstruction(params: SetWinnerParams) {
+  const { userSigner, marketId, outcome } = params;
+  const { marketPda, market } = await getMarketContext(marketId);
+  const winningOutcome =
+    outcome === "YES" ? WinningOutcome.OutcomeA :
+    outcome === "NO"  ? WinningOutcome.OutcomeB :
+                        WinningOutcome.Neither;
+  return getSetWinnerInstruction({
+    authority:      userSigner,
+    market:         marketPda,
+    outcomeYesMint: market.outcomeYesMint,
+    outcomeNoMint:  market.outcomeNoMint,
+    marketId,
+    winningOutcome,
+  });
+}
+
+// ── Close market ──────────────────────────────────────────────────────────────
+
+export interface CloseMarketParams {
+  userSigner: TransactionSigner;
+  marketId: number;
+}
+
+export async function buildCloseMarketInstruction(params: CloseMarketParams) {
+  const { userSigner, marketId } = params;
+  const { marketPda, orderbookPda } = await getMarketContext(marketId);
+  return getCloseMarketInstruction({
+    authority: userSigner,
+    market:    marketPda,
+    orderbook: orderbookPda,
+    marketId,
+  });
+}
+
+// ── Claim rewards ─────────────────────────────────────────────────────────────
+
+export interface ClaimRewardsParams {
+  userSigner: TransactionSigner;
+  marketId: number;
+}
+
+export async function buildClaimRewardsInstruction(params: ClaimRewardsParams) {
+  const { userSigner, marketId } = params;
+  const walletAddress = userSigner.address;
+  const { marketPda, market } = await getMarketContext(marketId);
+
+  const [userOutcomeYes, userOutcomeNo] = await Promise.all([
+    resolveUserTokenAccount(walletAddress, market.outcomeYesMint),
+    resolveUserTokenAccount(walletAddress, market.outcomeNoMint),
+  ]);
+
+  return getClaimRewardsInstructionAsync({
+    user:            userSigner,
+    market:          marketPda,
+    collateralMint:  market.collateralMint,
+    collateralVault: market.collateralVault,
+    outcomeYesMint:  market.outcomeYesMint,
+    outcomeNoMint:   market.outcomeNoMint,
+    userOutcomeYes,
+    userOutcomeNo,
+    marketId,
+  });
+}
+
 // ── Fetch UserStats ───────────────────────────────────────────────────────────
 
 export { type UserStats };
@@ -506,6 +648,25 @@ export async function getUserStats(
   const pda = await deriveUserStatsPDA(marketId, userAddress);
   const maybeAccount = await fetchMaybeUserStats(rpc, pda);
   return maybeAccount.exists ? maybeAccount.data : null;
+}
+
+// ── Update metadata ───────────────────────────────────────────────────────────
+
+export interface UpdateMetadataParams {
+  userSigner: TransactionSigner;
+  marketId: number;
+  newMetadataUrl: string;
+}
+
+export async function buildUpdateMetadataInstruction(params: UpdateMetadataParams) {
+  const { userSigner, marketId, newMetadataUrl } = params;
+  const { marketPda } = await getMarketContext(marketId);
+  return getUpdateMetadataInstruction({
+    authority: userSigner,
+    market:    marketPda,
+    marketId,
+    newMetadataUrl,
+  });
 }
 
 // ── getAllMarkets ─────────────────────────────────────────────────────────────

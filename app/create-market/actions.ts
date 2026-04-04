@@ -20,6 +20,7 @@ import {
 } from '@metaplex-foundation/umi';
 import { irysUploader } from '@metaplex-foundation/umi-uploader-irys';
 import type { MarketMetadata } from './metadata';
+import { fetchVideoPreview, type VideoPreview } from '@/lib/api/backend';
 
 function getUmi() {
   const walletJson = process.env.IRYS_WALLET;
@@ -64,4 +65,9 @@ export async function uploadMetadataAction(metadata: MarketMetadata): Promise<st
   const uri = await umi.uploader.uploadJson(metadata);
   console.log('[upload] Metadata URI:', uri);
   return uri;
+}
+
+/** Fetch YouTube video preview data via the backend. */
+export async function previewVideoAction(url: string): Promise<VideoPreview> {
+  return fetchVideoPreview(url);
 }

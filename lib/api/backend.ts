@@ -147,6 +147,29 @@ export async function fetchBackendMarket(marketId: number): Promise<BackendMarke
   return get<BackendMarket>(`/markets/${marketId}`);
 }
 
+export type PricePeriod = '1H' | '6H' | '1D' | '1W' | '1M' | '3M' | 'ALL';
+
+/** A single OHLC bucket from the prices endpoint */
+export interface PricePoint {
+  /** Unix timestamp in milliseconds */
+  t: number;
+  /** Raw on-chain price string — divide by BACKEND_PRICE_SCALE to get 0→1 probability */
+  p: string;
+}
+
+/**
+ * GET /markets/{market_id}/prices?token=yes|no&period=1H|6H|1D|1W|1M|3M|ALL
+ * Returns { history: PricePoint[] } sorted oldest → newest.
+ */
+export async function fetchMarketPrices(
+  marketId: number,
+  token: 'yes' | 'no' = 'yes',
+  period: PricePeriod = '1D',
+): Promise<PricePoint[]> {
+  const res = await get<{ history: PricePoint[] }>(`/markets/${marketId}/prices?token=${token}&period=${period}`);
+  return res.history ?? [];
+}
+
 
 interface RestOrderbookResponse {
   market_id: number;
@@ -206,4 +229,62 @@ export function getOrderbookWsUrl(marketId: number): string {
   const directUrl = (process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3003').replace(/\/$/, '');
   const wsBase = directUrl.replace(/^http/, 'ws');
   return `${wsBase}/ws/${marketId}`;
+}
+
+// ─── Video Preview ────────────────────────────────────────────────────────────
+
+export interface VideoPreview {
+  video_id: string;
+  title: string;
+  thumbnail: string;
+  channel_name: string;
+  current_views: number;
+  current_likes: number;
+  current_comments: number;
+  published_at: string;
+}
+
+/**
+ * POST /markets/preview — fetch YouTube video stats for market creation.
+ * Returns video metadata + current stats so the user can set a realistic target.
+ */
+export async function fetchVideoPreview(url: string): Promise<VideoPreview> {
+  const res = await fetch(`${BASE_URL}/markets/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  });
+  if (res.status === 400) throw new Error('Please paste a valid YouTube URL');
+  if (res.status === 404) throw new Error('Video not found');
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Preview failed (${res.status}): ${text}`);
+  }
+  return res.json() as Promise<VideoPreview>;
+}
+
+// ─── Market Resolution ────────────────────────────────────────────────────────
+
+export interface MarketResolution {
+  market_id: number;
+  outcome: 'OutcomeA' | 'OutcomeB';
+  actual_value: number;
+  threshold: number;
+  metric: string;
+  video_id: string;
+  resolved_at: string;
+}
+
+/**
+ * GET /markets/:id/resolution — fetch oracle-computed resolution for a settled market.
+ * Returns null if the oracle hasn't computed the result yet.
+ */
+export async function fetchMarketResolution(marketId: number): Promise<MarketResolution | null> {
+  const res = await fetch(`${BASE_URL}/markets/${marketId}/resolution`, { cache: 'no-store' });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Resolution fetch failed (${res.status}): ${text}`);
+  }
+  return res.json() as Promise<MarketResolution>;
 }

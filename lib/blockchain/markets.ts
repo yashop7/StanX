@@ -57,8 +57,15 @@ export interface DisplayMarket {
   category: string;
   description: string;
   resolutionCriteria: string;
+  resolutionSource?: string;
   participants: number;
-  priceHistory: { time: number; value: number }[];
+  // YouTube-specific fields (present only for video markets)
+  videoId?: string;
+  videoUrl?: string;
+  channelName?: string;
+  metric?: string;                             // e.g. "viewCount", "likeCount", "commentCount"
+  target?: number;
+  baselineValue?: number;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -91,17 +98,6 @@ function deriveStatus(data: ChainMarket): "active" | "resolved" | "ending-soon" 
   return "active";
 }
 
-/** Generates a plausible synthetic price history for chart display. */
-function syntheticPriceHistory(base: number, points = 60): { time: number; value: number }[] {
-  const history: { time: number; value: number }[] = [];
-  let price = base;
-  const now = Date.now();
-  for (let i = points; i >= 0; i--) {
-    price = Math.max(0.01, Math.min(0.99, price + (Math.random() - 0.5) * 0.015));
-    history.push({ time: now - i * 3_600_000, value: price });
-  }
-  return history;
-}
 
 interface OffChainMeta {
   question?: string;
@@ -109,6 +105,13 @@ interface OffChainMeta {
   description?: string;
   category?: string;
   resolutionCriteria?: string;
+  resolutionSource?: string;
+  videoId?: string;
+  videoUrl?: string;
+  channelName?: string;
+  metric?: string;
+  target?: number;
+  baselineValue?: number;
 }
 
 /**
@@ -126,12 +129,29 @@ async function tryFetchMetadata(url: string): Promise<OffChainMeta> {
     const res = await fetch(url, { signal: AbortSignal.timeout(3_000) });
     if (!res.ok) return {};
     const json = (await res.json()) as Record<string, unknown>;
+
+    // Parse Metaplex-style attributes array for YouTube-specific fields
+    const attrs = Array.isArray(json.attributes)
+      ? (json.attributes as Array<{ trait_type: string; value: string }>)
+      : [];
+    const attr = (key: string) => attrs.find(a => a.trait_type === key)?.value;
+
+    const targetRaw = attr("Target");
+    const baselineRaw = attr("Baseline Value");
+
     return {
       question: (json.title ?? json.question ?? json.name) as string | undefined,
       image: json.image as string | undefined,
       description: json.description as string | undefined,
-      category: json.category as string | undefined,
-      resolutionCriteria: (json.resolutionCriteria ?? json.resolution_criteria) as string | undefined,
+      category: attr("Category") ?? json.category as string | undefined,
+      resolutionCriteria: attr("Resolution Criteria") ?? (json.resolutionCriteria ?? json.resolution_criteria) as string | undefined,
+      resolutionSource: attr("Resolution Source"),
+      videoId: attr("Video ID"),
+      videoUrl: attr("Video URL"),
+      channelName: attr("Channel"),
+      metric: attr("Metric"),
+      target: targetRaw ? parseInt(targetRaw, 10) : undefined,
+      baselineValue: baselineRaw ? parseInt(baselineRaw, 10) : undefined,
     };
   } catch {
     return {};
@@ -172,8 +192,14 @@ function enrichChainMarket(
     category: meta.category ?? "General",
     description: meta.description ?? `On-chain prediction market #${data.marketId}.`,
     resolutionCriteria: meta.resolutionCriteria ?? "Resolves based on on-chain settlement.",
+    resolutionSource: meta.resolutionSource,
     participants: 0,
-    priceHistory: syntheticPriceHistory(yesPrice),
+    videoId: meta.videoId,
+    videoUrl: meta.videoUrl,
+    channelName: meta.channelName,
+    metric: meta.metric,
+    target: meta.target,
+    baselineValue: meta.baselineValue,
   };
 }
 

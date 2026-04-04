@@ -5,7 +5,7 @@ import { useTokenBalance } from '@/hooks/use-usdc-balance';
 import { useWalletSession, useSendTransaction } from '@solana/react-hooks';
 import { createWalletTransactionSigner } from '@solana/client';
 import { cn } from '@/lib/utils';
-import { RefreshCw, Loader2, ArrowDownToLine, CheckCircle2 } from 'lucide-react';
+import { RefreshCw, Loader2, ArrowDownToLine, CheckCircle2, Lock } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { buildClaimFundsInstruction } from '@/lib/blockchain/market';
@@ -14,6 +14,8 @@ interface UserStatsCardProps {
   marketId: number;
   outcomeYesMint?: string;
   outcomeNoMint?: string;
+  isSettled?: boolean;
+  winningOutcome?: "YES" | "NO" | "NEITHER" | null;
 }
 
 /**
@@ -30,7 +32,7 @@ function fmtUSDC(value: number): string {
   return '$' + parseFloat(value.toFixed(6)).toString();
 }
 
-export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint }: UserStatsCardProps) {
+export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint, isSettled, winningOutcome }: UserStatsCardProps) {
   const session = useWalletSession();
   const { send, isSending } = useSendTransaction();
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -122,14 +124,14 @@ export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint }: UserS
           <div className="grid grid-cols-2 gap-2">
             <div className={cn('stat-box transition-all', yesHeld > 0 && 'bg-success/8 border-success/25')}>
               <div className={cn('text-[10px] font-bold uppercase tracking-wider mb-1', yesHeld > 0 ? 'text-success' : 'text-muted-foreground/40')}>YES</div>
-              <div className={cn('text-lg font-bold font-mono leading-none', yesHeld > 0 ? 'text-foreground' : 'text-muted-foreground/25')}>
+              <div className={cn('text-sm font-bold font-mono leading-none', yesHeld > 0 ? 'text-foreground' : 'text-muted-foreground/25')}>
                 {yesHeld > 0 ? fmt(yesHeld) : '—'}
               </div>
               <div className="text-[10px] text-muted-foreground/40 mt-1">in wallet</div>
             </div>
             <div className={cn('stat-box transition-all', noHeld > 0 && 'bg-danger/8 border-danger/25')}>
               <div className={cn('text-[10px] font-bold uppercase tracking-wider mb-1', noHeld > 0 ? 'text-danger' : 'text-muted-foreground/40')}>NO</div>
-              <div className={cn('text-lg font-bold font-mono leading-none', noHeld > 0 ? 'text-foreground' : 'text-muted-foreground/25')}>
+              <div className={cn('text-sm font-bold font-mono leading-none', noHeld > 0 ? 'text-foreground' : 'text-muted-foreground/25')}>
                 {noHeld > 0 ? fmt(noHeld) : '—'}
               </div>
               <div className="text-[10px] text-muted-foreground/40 mt-1">in wallet</div>
@@ -148,39 +150,81 @@ export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint }: UserS
 
               {/* YES row */}
               <div className="grid grid-cols-3 items-center px-3 py-2.5 border-b border-border/50">
-                <span className="text-[11px] font-bold text-success">YES</span>
-                <span className={cn('text-[11px] font-mono text-right', stats.claimableYes > 0 ? 'text-success' : 'text-muted-foreground/40')}>
+                <span className="text-xs font-semibold text-success">YES</span>
+                <span className={cn('text-xs font-mono text-right', stats.claimableYes > 0 ? 'text-success' : 'text-muted-foreground/40')}>
                   {fmt(stats.claimableYes)}
                 </span>
-                <span className={cn('text-[11px] font-mono text-right', stats.lockedYes > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
+                <span className={cn('text-xs font-mono text-right', stats.lockedYes > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
                   {fmt(stats.lockedYes)}
                 </span>
               </div>
 
               {/* NO row */}
               <div className="grid grid-cols-3 items-center px-3 py-2.5 border-b border-border/50">
-                <span className="text-[11px] font-bold text-danger">NO</span>
-                <span className={cn('text-[11px] font-mono text-right', stats.claimableNo > 0 ? 'text-success' : 'text-muted-foreground/40')}>
+                <span className="text-xs font-semibold text-danger">NO</span>
+                <span className={cn('text-xs font-mono text-right', stats.claimableNo > 0 ? 'text-success' : 'text-muted-foreground/40')}>
                   {fmt(stats.claimableNo)}
                 </span>
-                <span className={cn('text-[11px] font-mono text-right', stats.lockedNo > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
+                <span className={cn('text-xs font-mono text-right', stats.lockedNo > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
                   {fmt(stats.lockedNo)}
                 </span>
               </div>
 
               {/* USDC row */}
               <div className="grid grid-cols-3 items-center px-3 py-2.5">
-                <span className="text-[11px] font-bold text-muted-foreground">USDC</span>
-                <span className={cn('text-[11px] font-mono text-right', stats.claimableCollateral > 0 ? 'text-success' : 'text-muted-foreground/40')}>
+                <span className="text-xs font-semibold text-muted-foreground">USDC</span>
+                <span className={cn('text-xs font-mono text-right', stats.claimableCollateral > 0 ? 'text-success' : 'text-muted-foreground/40')}>
                   {fmtUSDC(stats.claimableCollateral)}
                 </span>
-                <span className={cn('text-[11px] font-mono text-right', stats.lockedCollateral > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
+                <span className={cn('text-xs font-mono text-right', stats.lockedCollateral > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
                   {fmtUSDC(stats.lockedCollateral)}
                 </span>
               </div>
             </div>
           )}
           
+          {/* ── Settlement payout summary ─────────────────── */}
+          {isSettled && hasAnyPosition && (
+            <div className={cn(
+              "rounded-lg border p-3 space-y-2",
+              stats?.rewardClaimed
+                ? "border-emerald-500/20 bg-emerald-500/5"
+                : canClaim
+                  ? "border-amber-500/20 bg-amber-500/5"
+                  : "border-border/30 bg-muted/10"
+            )}>
+              {stats?.rewardClaimed ? (
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-emerald-400">Rewards Claimed</p>
+                    <p className="text-[10px] text-muted-foreground">Your winnings have been transferred to your wallet.</p>
+                  </div>
+                </div>
+              ) : canClaim ? (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] font-semibold text-amber-400">Rewards Available</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {winningOutcome === 'YES' && yesHeld > 0
+                      ? `You hold ${fmt(yesHeld)} YES tokens → claim up to $${fmt(yesHeld)} USDC`
+                      : winningOutcome === 'NO' && noHeld > 0
+                        ? `You hold ${fmt(noHeld)} NO tokens → claim up to $${fmt(noHeld)} USDC`
+                        : 'You have claimable funds from this market.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Lock className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+                  <p className="text-[10px] text-muted-foreground">
+                    {winningOutcome && winningOutcome !== 'NEITHER'
+                      ? `${winningOutcome === 'YES' ? 'NO' : 'YES'} tokens have no value after resolution.`
+                      : 'No claimable rewards for this market.'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── Claim button ─────────────────────────────────── */}
           {canClaim && (
             <button

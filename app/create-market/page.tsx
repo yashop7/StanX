@@ -1,27 +1,25 @@
 'use client';
 
 /**
- * Create Market — 3-step pipeline:
- *   1. Upload image to Arweave via Irys  → imageUrl
- *   2. Upload metadata JSON to Arweave   → metadataUrl
- *   3. initializeMarket on-chain (wallet tx) with metadataUrl
+ * Create Market — YouTube Video Prediction Flow
+ *
+ * Step 1: Paste YouTube URL → fetch video preview
+ * Step 2: Pick metric (views/likes/comments), set target, pick deadline
+ * Step 3: Review auto-generated market → submit on-chain
  */
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import {
-  ArrowLeft, CalendarIcon, Plus, Sparkles, Upload, AlertCircle,
-  CheckCircle2, Loader2, ImageIcon, FileJson, Zap, ExternalLink, X,
+  ArrowLeft, ArrowRight, CalendarIcon, Plus, Loader2,
+  AlertCircle, CheckCircle2, Zap, ExternalLink, X,
+  Eye, ThumbsUp, MessageCircle, Play, Link2, Youtube,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -31,47 +29,72 @@ import { createWalletTransactionSigner } from '@solana/client';
 import { address } from '@solana/kit';
 import { USDC_MINT, SOLANA_NETWORK } from '@/lib/constants';
 import { getInitializeMarketInstructionAsync } from '@/generated/instructions/initializeMarket';
-import { fetchBackendMarkets } from '@/lib/api/backend';
-import { uploadImageAction, uploadMetadataAction } from './actions';
-import { buildMarketMetadata } from './metadata';
+import { fetchBackendMarkets, fetchIndexerHealth } from '@/lib/api/backend';
+import type { VideoPreview } from '@/lib/api/backend';
+import { uploadMetadataAction, previewVideoAction } from './actions';
+import { buildVideoMarketMetadata, formatNumber, METRIC_LABELS, type VideoMetric } from './metadata';
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// ── YouTube URL detection ────────────────────────────────────────────────────
 
-const categories = [
-  { value: 'Politics', label: 'Politics', icon: '🏛️' },
-  { value: 'Sports', label: 'Sports', icon: '⚽' },
-  { value: 'Crypto', label: 'Crypto', icon: '₿' },
-  { value: 'Entertainment', label: 'Entertainment', icon: '🎬' },
-  { value: 'Science', label: 'Science', icon: '🔬' },
-  { value: 'Technology', label: 'Technology', icon: '💻' },
+const YT_PATTERNS = [
+  /(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{11})/,
 ];
 
-const LIMITS = {
-  question:           200,
-  description:        500,
-  resolutionCriteria: 500,
-  resolutionSource:   200,
-  imageMaxBytes:      10 * 1024 * 1024, // 10 MB
-};
+function extractVideoId(url: string): string | null {
+  for (const re of YT_PATTERNS) {
+    const m = url.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
 
-type Step = 'idle' | 'uploading-image' | 'uploading-metadata' | 'initializing-market' | 'done' | 'error';
+// ── Metric config ────────────────────────────────────────────────────────────
+
+const METRICS: { key: VideoMetric; icon: typeof Eye; color: string }[] = [
+  { key: 'views',    icon: Eye,            color: 'blue' },
+  { key: 'likes',    icon: ThumbsUp,       color: 'emerald' },
+  { key: 'comments', icon: MessageCircle,  color: 'amber' },
+];
+
+function getCurrentValue(video: VideoPreview, metric: VideoMetric): number {
+  switch (metric) {
+    case 'views':    return video.current_views;
+    case 'likes':    return video.current_likes;
+    case 'comments': return video.current_comments;
+  }
+}
+
+// ── Pipeline types ───────────────────────────────────────────────────────────
+
+type PipeStep = 'idle' | 'checking-indexer' | 'uploading-metadata' | 'initializing-market' | 'done' | 'error';
 
 interface Pipeline {
-  step: Step;
-  imageUrl: string | null;
+  step: PipeStep;
   metadataUrl: string | null;
   marketId: number | null;
   txSignature: string | null;
   error: string | null;
 }
 
-const STEPS: { key: Step; label: string; icon: React.ReactNode }[] = [
-  { key: 'uploading-image',     label: 'Upload Image to Arweave',    icon: <ImageIcon className="h-4 w-4" /> },
-  { key: 'uploading-metadata',  label: 'Upload Metadata to Arweave', icon: <FileJson className="h-4 w-4" /> },
-  { key: 'initializing-market', label: 'Initialize Market On-Chain',  icon: <Zap className="h-4 w-4" /> },
-];
+function progressPct(step: PipeStep): number {
+  switch (step) {
+    case 'checking-indexer':    return 8;
+    case 'uploading-metadata':  return 40;
+    case 'initializing-market': return 75;
+    case 'done':                return 100;
+    default:                    return 0;
+  }
+}
 
-function stepIdx(step: Step) { return STEPS.findIndex((s) => s.key === step); }
+function stepLabel(step: PipeStep, marketId: number | null): string {
+  switch (step) {
+    case 'checking-indexer':    return 'Verifying indexer is online...';
+    case 'uploading-metadata':  return 'Uploading metadata to Arweave...';
+    case 'initializing-market': return 'Waiting for wallet approval...';
+    case 'done':                return `Market #${marketId} is live on-chain`;
+    default:                    return '';
+  }
+}
 
 // ── Component ────────────────────────────────────────────────────────────────
 
@@ -79,246 +102,177 @@ export default function CreateMarket() {
   const router = useRouter();
   const wallet = useWalletSession();
   const { send } = useSendTransaction();
+  const urlInputRef = useRef<HTMLInputElement>(null);
 
-  const [form, setFormState] = useState({
-    question: '', category: '', description: '',
-    resolutionCriteria: '', resolutionSource: '',
-  });
+  // Step 1: URL input
+  const [urlInput, setUrlInput] = useState('');
+  const [fetchingPreview, setFetchingPreview] = useState(false);
+  const [video, setVideo] = useState<VideoPreview | null>(null);
+  const [urlError, setUrlError] = useState<string | null>(null);
+
+  // Step 2: Market configuration
+  const [metric, setMetric] = useState<VideoMetric>('views');
+  const [targetInput, setTargetInput] = useState('');
   const [endDate, setEndDate] = useState<Date>();
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  // Pipeline state
   const [pipe, setPipe] = useState<Pipeline>({
-    step: 'idle', imageUrl: null, metadataUrl: null,
-    marketId: null, txSignature: null, error: null,
+    step: 'idle', metadataUrl: null, marketId: null, txSignature: null, error: null,
   });
 
   const busy = pipe.step !== 'idle' && pipe.step !== 'done' && pipe.step !== 'error';
-  const curIdx = stepIdx(pipe.step);
+  const inFlight = pipe.step !== 'idle';
+  const isDone = pipe.step === 'done';
+  const isError = pipe.step === 'error';
 
-  // Enforce character limits on all text fields
-  const set = (field: keyof typeof LIMITS, value: string) => {
-    const limit = LIMITS[field as keyof typeof LIMITS];
-    if (typeof limit === 'number' && field !== 'imageMaxBytes' && value.length > limit) return;
-    setFormState((p) => ({ ...p, [field]: value }));
-  };
+  // ── Fetch video preview ──────────────────────────────────────────────────
 
-  const onImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (f.size > LIMITS.imageMaxBytes) {
-      toast.error('Image too large', { description: `Max allowed size is 10 MB. Your file is ${(f.size / 1024 / 1024).toFixed(1)} MB.` });
-      e.target.value = '';
-      return;
-    }
-    setImageFile(f);
-    const r = new FileReader();
-    r.onloadend = () => setImagePreview(r.result as string);
-    r.readAsDataURL(f);
-  };
+  const handleFetchPreview = useCallback(async () => {
+    const url = urlInput.trim();
+    if (!url) { setUrlError('Paste a YouTube URL to get started'); return; }
 
-  const clearImage = () => {
-    setImageFile(null);
-    setImagePreview(null);
-  };
+    const videoId = extractVideoId(url);
+    if (!videoId) { setUrlError('Not a valid YouTube URL. Try youtube.com/watch?v=... or youtu.be/...'); return; }
 
-  async function nextMarketId(): Promise<number> {
+    setUrlError(null);
+    setFetchingPreview(true);
     try {
-      const markets = await fetchBackendMarkets();
-      if (markets.length === 0) return 1;
-      return Math.max(...markets.map((m) => m.market_id)) + 1;
-    } catch {
-      const id = (Date.now() % 100_000) + 1;
-      return id;
+      const data = await previewVideoAction(url);
+      setVideo(data);
+      // Auto-set a suggested target (2x current views, rounded up)
+      const current = data.current_views;
+      const suggested = roundUpNice(current * 2);
+      setTargetInput(String(suggested));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setUrlError(msg);
+    } finally {
+      setFetchingPreview(false);
     }
-  }
+  }, [urlInput]);
 
-  // ── Submit handler — the 3-step pipeline ─────────────────────────────────
+  const handleUrlKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') { e.preventDefault(); handleFetchPreview(); }
+  };
 
-  const handleSubmit = async (e: React.SyntheticEvent) => {
-    e.preventDefault();
+  const handleReset = () => {
+    setVideo(null);
+    setUrlInput('');
+    setUrlError(null);
+    setTargetInput('');
+    setEndDate(undefined);
+    setMetric('views');
+    setPipe({ step: 'idle', metadataUrl: null, marketId: null, txSignature: null, error: null });
+  };
 
-    // ── Client-side validation ──────────────────────────────────────────────
-    if (!wallet) {
-      toast.error('Wallet not connected', { description: 'Connect your wallet before creating a market.' });
-      return;
-    }
-    if (!form.question.trim()) {
-      toast.error('Question required', { description: 'Please enter a market question.' });
-      return;
-    }
-    if (!form.category) {
-      toast.error('Category required', { description: 'Please select a category.' });
-      return;
-    }
-    if (!form.description.trim()) {
-      toast.error('Description required', { description: 'Please describe what this market is about.' });
-      return;
-    }
-    if (!form.resolutionCriteria.trim()) {
-      toast.error('Resolution criteria required', { description: 'Explain how this market will be resolved.' });
-      return;
-    }
-    if (!endDate) {
-      toast.error('Settlement date required', { description: 'Pick a date when this market will settle.' });
-      return;
-    }
-    if (endDate <= new Date()) {
-      toast.error('Invalid date', { description: 'Settlement deadline must be in the future.' });
-      return;
-    }
+  // ── Target parsing ───────────────────────────────────────────────────────
 
-    setPipe({ step: 'uploading-image', imageUrl: null, metadataUrl: null, marketId: null, txSignature: null, error: null });
+  const parsedTarget = parseTarget(targetInput);
+  const currentValue = video ? getCurrentValue(video, metric) : 0;
+  const targetValid = parsedTarget !== null && parsedTarget > currentValue;
 
+  // ── Submit handler ───────────────────────────────────────────────────────
+
+  const handleSubmit = async () => {
+    if (!wallet) { toast.error('Connect your wallet first'); return; }
+    if (!video) { toast.error('Fetch a video first'); return; }
+    if (!targetValid) { toast.error('Set a target higher than the current count'); return; }
+    if (!endDate) { toast.error('Pick a settlement deadline'); return; }
+    if (endDate <= new Date()) { toast.error('Deadline must be in the future'); return; }
+
+    // Check indexer
+    setPipe({ step: 'checking-indexer', metadataUrl: null, marketId: null, txSignature: null, error: null });
     try {
-      // ── Step 1: Upload image ─────────────────────────────────────────────
-      let imageUrl = '';
-      if (imageFile) {
-        const fd = new FormData();
-        fd.append('image', imageFile);
-        imageUrl = await uploadImageAction(fd);
+      const health = await fetchIndexerHealth();
+      if (!health.indexer_ok) {
+        setPipe(p => ({ ...p, step: 'error', error: 'Indexer is offline. Try again in a few minutes.' }));
+        return;
       }
-      setPipe((p) => ({ ...p, step: 'uploading-metadata', imageUrl }));
+    } catch {
+      setPipe(p => ({ ...p, step: 'error', error: 'Could not reach backend. Check your connection.' }));
+      return;
+    }
 
-      // ── Step 2: Upload metadata JSON ─────────────────────────────────────
+    try {
+      // Build metadata
+      setPipe(p => ({ ...p, step: 'uploading-metadata' }));
       const deadline = Math.floor(endDate.getTime() / 1000);
-      const metadata = buildMarketMetadata({
-        name: form.question,
-        description: form.description,
-        imageUrl,
-        category: form.category,
-        resolutionCriteria: form.resolutionCriteria,
-        resolutionSource: form.resolutionSource,
+      const metadata = buildVideoMarketMetadata({
+        videoId: video.video_id,
+        videoTitle: video.title,
+        channelName: video.channel_name,
+        thumbnailUrl: video.thumbnail,
+        metric,
+        target: parsedTarget!,
+        currentValue,
         settlementDeadline: deadline,
       });
       const metadataUrl = await uploadMetadataAction(metadata);
 
-      // ── Step 3: Initialize market on-chain ───────────────────────────────
-      const marketId = await nextMarketId();
-      setPipe((p) => ({ ...p, step: 'initializing-market', metadataUrl, marketId }));
+      // Get next market ID
+      const markets = await fetchBackendMarkets();
+      const marketId = markets.length === 0 ? 1 : Math.max(...markets.map(m => m.market_id)) + 1;
+      setPipe(p => ({ ...p, step: 'initializing-market', metadataUrl, marketId }));
 
+      // Initialize on-chain
       const collateralMint = address(
         USDC_MINT[SOLANA_NETWORK as keyof typeof USDC_MINT] ?? USDC_MINT.devnet,
       );
       const { signer: authority } = createWalletTransactionSigner(wallet);
-
       const ix = await getInitializeMarketInstructionAsync({
-        authority,
-        collateralMint,
-        marketId,
+        authority, collateralMint, marketId,
         settlementDeadline: BigInt(deadline),
         metaDataUrl: metadataUrl,
       });
-
       const signature = await send({ instructions: [ix], authority });
 
-      setPipe((p) => ({ ...p, step: 'done', txSignature: signature }));
-      toast.success('Market created!', { description: `Market #${marketId} is now live on-chain.` });
+      setPipe(p => ({ ...p, step: 'done', txSignature: signature }));
+      toast.success(`Market #${marketId} is live!`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      setPipe((p) => ({ ...p, step: 'error', error: msg }));
+      setPipe(p => ({ ...p, step: 'error', error: msg }));
       toast.error('Failed to create market', { description: msg });
     }
   };
 
+  const pct = progressPct(pipe.step);
+
+  // ── Generated market question preview ────────────────────────────────────
+
+  const generatedQuestion = video && parsedTarget
+    ? `Will "${video.title}" reach ${formatNumber(parsedTarget)} ${METRIC_LABELS[metric].toLowerCase()}?`
+    : null;
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className={cn('min-h-screen bg-background', inFlight && 'pb-20')}>
       <Header />
       <main className="container mx-auto px-4 py-8 max-w-3xl">
+
         {/* Back */}
-        <button onClick={() => router.back()} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 group">
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 group"
+        >
           <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
           <span className="text-sm font-medium">Back</span>
         </button>
 
-        {/* Header */}
+        {/* Page header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 rounded-xl bg-primary/10 border border-primary/20"><Plus className="h-5 w-5 text-primary" /></div>
-            <h1 className="text-2xl font-bold tracking-tight">Create New Market</h1>
+            <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
+              <Plus className="h-5 w-5 text-primary" />
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight">Create Video Market</h1>
           </div>
-          <p className="text-muted-foreground">Upload image & metadata to Arweave, then initialize the market on-chain.</p>
+          <p className="text-muted-foreground">
+            Paste a YouTube video link, set your prediction target, and launch a market.
+          </p>
         </div>
 
-        {/* ── Pipeline progress ──────────────────────────────────────────── */}
-        {pipe.step !== 'idle' && (
-          <div className="mb-8 p-5 rounded-2xl bg-card border border-border/50 space-y-4">
-            <p className="text-sm font-semibold">Progress</p>
-            <div className="space-y-3">
-              {STEPS.map((s, i) => {
-                const done = pipe.step === 'done' || curIdx > i;
-                const active = s.key === pipe.step;
-                return (
-                  <div key={s.key} className="flex items-center gap-3">
-                    <div className={cn(
-                      'h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold border shrink-0',
-                      done && 'bg-emerald-500/20 border-emerald-500 text-emerald-400',
-                      active && 'bg-primary/20 border-primary text-primary animate-pulse',
-                      !done && !active && 'bg-muted/30 border-border/40 text-muted-foreground',
-                    )}>
-                      {done ? <CheckCircle2 className="h-4 w-4" /> : active ? <Loader2 className="h-4 w-4 animate-spin" /> : s.icon}
-                    </div>
-                    <span className={cn('text-sm', done && 'text-emerald-400', active && 'text-foreground font-medium', !done && !active && 'text-muted-foreground')}>
-                      {s.label}
-                    </span>
-                    {done && i === 0 && pipe.imageUrl && (
-                      <a href={pipe.imageUrl} target="_blank" rel="noreferrer" className="ml-auto flex items-center gap-1 text-[10px] text-emerald-400/70 hover:text-emerald-400 font-mono truncate max-w-[200px]">
-                        {pipe.imageUrl.split('/').pop()} <ExternalLink className="h-3 w-3 shrink-0" />
-                      </a>
-                    )}
-                    {done && i === 1 && pipe.metadataUrl && (
-                      <a href={pipe.metadataUrl} target="_blank" rel="noreferrer" className="ml-auto flex items-center gap-1 text-[10px] text-emerald-400/70 hover:text-emerald-400 font-mono truncate max-w-[200px]">
-                        {pipe.metadataUrl.split('/').pop()} <ExternalLink className="h-3 w-3 shrink-0" />
-                      </a>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Success */}
-            {pipe.step === 'done' && (
-              <div className="pt-2 space-y-3">
-                <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 space-y-2">
-                  <p className="text-sm font-semibold text-emerald-400">Market #{pipe.marketId} Created!</p>
-                  {pipe.txSignature && (
-                    <p className="text-xs text-muted-foreground font-mono break-all">Tx: {pipe.txSignature}</p>
-                  )}
-                  {pipe.imageUrl && (
-                    <p className="text-xs text-muted-foreground">
-                      Image: <a href={pipe.imageUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">{pipe.imageUrl}</a>
-                    </p>
-                  )}
-                  {pipe.metadataUrl && (
-                    <p className="text-xs text-muted-foreground">
-                      Metadata: <a href={pipe.metadataUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">{pipe.metadataUrl}</a>
-                    </p>
-                  )}
-                </div>
-                <Button variant="outline" onClick={() => router.push('/markets')} className="w-full">View Markets</Button>
-              </div>
-            )}
-
-            {/* Error */}
-            {pipe.step === 'error' && pipe.error && (
-              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-red-400">Error</p>
-                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{pipe.error}</p>
-                  </div>
-                </div>
-                <Button variant="outline" size="sm" className="mt-3" onClick={() =>
-                  setPipe({ step: 'idle', imageUrl: null, metadataUrl: null, marketId: null, txSignature: null, error: null })
-                }>Try Again</Button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── Wallet gate — full block when not connected ─────────────── */}
+        {/* Wallet gate */}
         {!wallet ? (
           <div className="flex flex-col items-center justify-center py-20 rounded-2xl bg-muted/20 border border-border/30 text-center space-y-4">
             <div className="p-4 rounded-full bg-muted/40 border border-border/40">
@@ -327,200 +281,539 @@ export default function CreateMarket() {
             <div className="space-y-1">
               <h2 className="text-lg font-semibold">Wallet not connected</h2>
               <p className="text-sm text-muted-foreground max-w-xs">
-                You need to connect your Solana wallet to create a prediction market.
+                Connect your Solana wallet to create a prediction market.
               </p>
             </div>
           </div>
         ) : (
-        <form onSubmit={handleSubmit} className="space-y-8">
-          {/* Question */}
-          <div className="p-6 rounded-2xl bg-card border border-border/50 space-y-6">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <h2 className="font-semibold">Market Question</h2>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="question">Question *</Label>
-                <span className={cn('text-xs', form.question.length >= LIMITS.question ? 'text-red-400' : 'text-muted-foreground')}>
-                  {form.question.length}/{LIMITS.question}
-                </span>
-              </div>
-              <Input
-                id="question"
-                placeholder="e.g., Will Bitcoin reach $100,000 by end of 2025?"
-                value={form.question}
-                onChange={(e) => set('question', e.target.value)}
-                className="h-12 bg-background/50"
-                disabled={busy || pipe.step === 'done'}
-                maxLength={LIMITS.question}
-              />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label>Category *</Label>
-                <Select value={form.category} onValueChange={(v) => setFormState((p) => ({ ...p, category: v }))} disabled={busy || pipe.step === 'done'}>
-                  <SelectTrigger className="h-12 bg-background/50"><SelectValue placeholder="Select category" /></SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c.value} value={c.value}>
-                        <span className="flex items-center gap-2"><span>{c.icon}</span><span>{c.label}</span></span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Settlement Deadline *</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" disabled={busy || pipe.step === 'done'}
-                      className={cn('h-12 w-full justify-start text-left font-normal bg-background/50', !endDate && 'text-muted-foreground')}>
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {endDate ? format(endDate, 'PPP') : 'Select end date'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={endDate} onSelect={setEndDate} disabled={(d) => d <= new Date()} />
-                  </PopoverContent>
-                </Popover>
-              </div>
-            </div>
-          </div>
+          <div className="space-y-6">
 
-          {/* Details */}
-          <div className="p-6 rounded-2xl bg-card border border-border/50 space-y-6">
-            <h2 className="font-semibold">Market Details</h2>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="description">Description *</Label>
-                <span className={cn('text-xs', form.description.length >= LIMITS.description ? 'text-red-400' : 'text-muted-foreground')}>
-                  {form.description.length}/{LIMITS.description}
-                </span>
+            {/* ════════════════════════════════════════════════════════════
+                STEP 1 — YouTube URL Input
+               ════════════════════════════════════════════════════════════ */}
+            <div className="p-6 rounded-2xl bg-card border border-border/50 space-y-4">
+              <div className="flex items-center gap-2">
+                <Youtube className="h-4 w-4 text-red-500" />
+                <h2 className="font-semibold">YouTube Video</h2>
+                {video && (
+                  <button
+                    onClick={handleReset}
+                    className="ml-auto text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                  >
+                    <X className="h-3 w-3" /> Change video
+                  </button>
+                )}
               </div>
-              <Textarea
-                id="description"
-                placeholder="What is this market about?"
-                value={form.description}
-                onChange={(e) => set('description', e.target.value)}
-                className="min-h-[100px] bg-background/50 resize-none"
-                disabled={busy || pipe.step === 'done'}
-                maxLength={LIMITS.description}
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="resolutionCriteria">Resolution Criteria *</Label>
-                <span className={cn('text-xs', form.resolutionCriteria.length >= LIMITS.resolutionCriteria ? 'text-red-400' : 'text-muted-foreground')}>
-                  {form.resolutionCriteria.length}/{LIMITS.resolutionCriteria}
-                </span>
-              </div>
-              <Textarea
-                id="resolutionCriteria"
-                placeholder="How will this market be resolved?"
-                value={form.resolutionCriteria}
-                onChange={(e) => set('resolutionCriteria', e.target.value)}
-                className="min-h-[80px] bg-background/50 resize-none"
-                disabled={busy || pipe.step === 'done'}
-                maxLength={LIMITS.resolutionCriteria}
-              />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="resolutionSource">Resolution Source</Label>
-                <span className={cn('text-xs', form.resolutionSource.length >= LIMITS.resolutionSource ? 'text-red-400' : 'text-muted-foreground')}>
-                  {form.resolutionSource.length}/{LIMITS.resolutionSource}
-                </span>
-              </div>
-              <Input
-                id="resolutionSource"
-                placeholder="e.g., CoinGecko, ESPN, official data"
-                value={form.resolutionSource}
-                onChange={(e) => set('resolutionSource', e.target.value)}
-                className="h-12 bg-background/50"
-                disabled={busy || pipe.step === 'done'}
-                maxLength={LIMITS.resolutionSource}
-              />
-            </div>
-          </div>
 
-          {/* Image */}
-          <div className="p-6 rounded-2xl bg-card border border-border/50 space-y-4">
-            <h2 className="font-semibold">Cover Image <span className="text-muted-foreground font-normal text-sm">(optional)</span></h2>
-            <div className={cn(
-              'relative h-44 rounded-xl border-2 border-dashed border-border/50 hover:border-primary/50 transition-colors overflow-hidden flex items-center justify-center bg-background/50',
-              !imagePreview && 'cursor-pointer',
-              (busy || pipe.step === 'done') && 'pointer-events-none opacity-60',
-            )}>
-              {!imagePreview && (
-                <input type="file" accept="image/*" onChange={onImage} className="absolute inset-0 opacity-0 cursor-pointer" disabled={busy || pipe.step === 'done'} />
-              )}
-              {imagePreview ? (
+              {!video ? (
                 <>
-                  <img src={imagePreview} alt="Preview" className="absolute inset-0 w-full h-full object-cover" />
-                  {/* Remove button */}
-                  {!busy && pipe.step !== 'done' && (
-                    <button
-                      type="button"
-                      onClick={clearImage}
-                      className="absolute top-2 right-2 z-10 h-7 w-7 rounded-full bg-black/60 hover:bg-red-500/80 flex items-center justify-center transition-colors"
-                      title="Remove image"
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
+                      <Input
+                        ref={urlInputRef}
+                        placeholder="Paste YouTube video URL..."
+                        value={urlInput}
+                        onChange={e => { setUrlInput(e.target.value); setUrlError(null); }}
+                        onKeyDown={handleUrlKeyDown}
+                        className="h-12 pl-10 bg-background/50 font-mono text-sm"
+                        disabled={fetchingPreview}
+                      />
+                    </div>
+                    <Button
+                      onClick={handleFetchPreview}
+                      disabled={fetchingPreview || !urlInput.trim()}
+                      className="h-12 px-6"
                     >
-                      <X className="h-4 w-4 text-white" />
-                    </button>
+                      {fetchingPreview ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <span className="flex items-center gap-2">
+                          <Play className="h-4 w-4" /> Fetch
+                        </span>
+                      )}
+                    </Button>
+                  </div>
+                  {urlError && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                      <AlertCircle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+                      <p className="text-sm text-red-400">{urlError}</p>
+                    </div>
                   )}
+                  <p className="text-xs text-muted-foreground/60">
+                    Supports youtube.com/watch?v=, youtu.be/, and youtube.com/shorts/ links
+                  </p>
                 </>
               ) : (
-                <div className="text-center pointer-events-none">
-                  <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">Click to upload</p>
-                  <p className="text-xs text-muted-foreground/60">PNG, JPG, GIF — max 10 MB</p>
+                /* ── Video Preview Card ─────────────────────────────────── */
+                <div className="rounded-xl overflow-hidden border border-border/30">
+                  {/* Thumbnail hero */}
+                  <div className="relative aspect-video bg-muted/20">
+                    <img
+                      src={video.thumbnail}
+                      alt={video.title}
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
+                    <div className="absolute bottom-0 left-0 right-0 p-4">
+                      <h3 className="text-white font-semibold text-lg leading-tight line-clamp-2">
+                        {video.title}
+                      </h3>
+                      <p className="text-white/70 text-sm mt-1">{video.channel_name}</p>
+                    </div>
+                  </div>
+
+                  {/* Stats row */}
+                  <div className="grid grid-cols-3 divide-x divide-border/30 bg-muted/10">
+                    {METRICS.map(({ key, icon: Icon }) => {
+                      const value = getCurrentValue(video, key);
+                      const isSelected = metric === key;
+                      return (
+                        <div
+                          key={key}
+                          className={cn(
+                            'py-3 px-4 text-center transition-colors',
+                            isSelected && 'bg-primary/5',
+                          )}
+                        >
+                          <div className="flex items-center justify-center gap-1.5 mb-1">
+                            <Icon className={cn('h-3.5 w-3.5', isSelected ? 'text-primary' : 'text-muted-foreground')} />
+                            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                              {METRIC_LABELS[key]}
+                            </span>
+                          </div>
+                          <p className={cn(
+                            'text-lg font-bold tabular-nums',
+                            isSelected ? 'text-foreground' : 'text-muted-foreground',
+                          )}>
+                            {formatNumber(value)}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
-            {imageFile && (
-              <p className="text-xs text-muted-foreground">
-                Selected: <span className="text-foreground">{imageFile.name}</span>{' '}
-                <span className={imageFile.size > 5 * 1024 * 1024 ? 'text-amber-400' : ''}>
-                  ({(imageFile.size / 1024 / 1024).toFixed(2)} MB)
-                </span>
-                {imageFile.size > 5 * 1024 * 1024 && (
-                  <span className="text-amber-400 ml-1">— large file, upload may be slow</span>
-                )}
-              </p>
-            )}
-          </div>
 
-          {/* Submit */}
-          {pipe.step !== 'done' && (
-            <div className="p-6 rounded-2xl bg-gradient-to-br from-primary/5 to-primary/10 border border-primary/20 space-y-4">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 className="h-5 w-5 text-primary mt-0.5" />
-                <div>
-                  <h3 className="font-medium mb-1">Ready to Create?</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Upload image → upload metadata JSON → initialize market on-chain (1 wallet approval).
-                  </p>
+            {/* ════════════════════════════════════════════════════════════
+                STEP 2 — Market Configuration (only after video loaded)
+               ════════════════════════════════════════════════════════════ */}
+            {video && (
+              <div className="p-6 rounded-2xl bg-card border border-border/50 space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-primary" />
+                  <h2 className="font-semibold">Set Your Prediction</h2>
+                </div>
+
+                {/* Metric selector */}
+                <div className="space-y-2">
+                  <Label className="text-sm">What are you predicting?</Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {METRICS.map(({ key, icon: Icon }) => {
+                      const isSelected = metric === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            setMetric(key);
+                            const current = getCurrentValue(video, key);
+                            setTargetInput(String(roundUpNice(current * 2)));
+                          }}
+                          disabled={busy || isDone}
+                          className={cn(
+                            'relative flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all',
+                            isSelected
+                              ? 'border-primary/60 bg-primary/5 shadow-sm'
+                              : 'border-border/30 bg-background/50 hover:border-border/60 hover:bg-muted/20',
+                            (busy || isDone) && 'opacity-60 pointer-events-none',
+                          )}
+                        >
+                          <Icon className={cn(
+                            'h-5 w-5',
+                            isSelected ? 'text-primary' : 'text-muted-foreground',
+                          )} />
+                          <span className={cn(
+                            'text-sm font-semibold',
+                            isSelected ? 'text-foreground' : 'text-muted-foreground',
+                          )}>
+                            {METRIC_LABELS[key]}
+                          </span>
+                          {isSelected && (
+                            <div className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary flex items-center justify-center">
+                              <CheckCircle2 className="h-3 w-3 text-primary-foreground" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Target input */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="target" className="text-sm">
+                      Target {METRIC_LABELS[metric]}
+                    </Label>
+                    <span className="text-xs text-muted-foreground">
+                      Currently: <span className="font-semibold text-foreground tabular-nums">{formatNumber(currentValue)}</span>
+                    </span>
+                  </div>
+                  <Input
+                    id="target"
+                    placeholder={`e.g. ${formatNumber(roundUpNice(currentValue * 2))}`}
+                    value={targetInput}
+                    onChange={e => setTargetInput(e.target.value)}
+                    className={cn(
+                      'h-12 bg-background/50 text-lg font-semibold tabular-nums',
+                      targetInput && !targetValid && 'border-red-500/50 focus-visible:ring-red-500/30',
+                    )}
+                    disabled={busy || isDone}
+                  />
+                  {targetInput && !targetValid && parsedTarget !== null && (
+                    <p className="text-xs text-red-400">
+                      Target must be higher than current {METRIC_LABELS[metric].toLowerCase()} ({formatNumber(currentValue)})
+                    </p>
+                  )}
+                  {targetInput && parsedTarget === null && (
+                    <p className="text-xs text-red-400">
+                      Enter a valid number (e.g. 1000000 or 1M)
+                    </p>
+                  )}
+
+                  {/* Quick target suggestions */}
+                  <div className="flex flex-wrap gap-2">
+                    {getTargetSuggestions(currentValue).map(val => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setTargetInput(String(val))}
+                        disabled={busy || isDone}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-xs font-semibold tabular-nums border transition-all',
+                          parsedTarget === val
+                            ? 'border-primary/50 bg-primary/10 text-foreground'
+                            : 'border-border/30 bg-muted/10 text-muted-foreground hover:border-border/60 hover:bg-muted/20',
+                          (busy || isDone) && 'opacity-60 pointer-events-none',
+                        )}
+                      >
+                        {formatNumber(val)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Settlement deadline */}
+                <div className="space-y-2">
+                  <Label className="text-sm">Settlement Deadline</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        disabled={busy || isDone}
+                        className={cn(
+                          'h-12 w-full justify-start text-left font-normal bg-background/50',
+                          !endDate && 'text-muted-foreground',
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {endDate ? format(endDate, 'PPP') : 'Select deadline'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={endDate}
+                        onSelect={setEndDate}
+                        disabled={d => d <= new Date()}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {/* Quick deadline suggestions */}
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: '7 days', days: 7 },
+                      { label: '14 days', days: 14 },
+                      { label: '30 days', days: 30 },
+                      { label: '90 days', days: 90 },
+                    ].map(opt => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + opt.days);
+                      d.setHours(23, 59, 59, 0);
+                      const isSelected = endDate && format(endDate, 'yyyy-MM-dd') === format(d, 'yyyy-MM-dd');
+                      return (
+                        <button
+                          key={opt.days}
+                          type="button"
+                          onClick={() => setEndDate(d)}
+                          disabled={busy || isDone}
+                          className={cn(
+                            'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
+                            isSelected
+                              ? 'border-primary/50 bg-primary/10 text-foreground'
+                              : 'border-border/30 bg-muted/10 text-muted-foreground hover:border-border/60 hover:bg-muted/20',
+                            (busy || isDone) && 'opacity-60 pointer-events-none',
+                          )}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-4 pt-2">
-                <Button type="submit" variant="success" disabled={busy} className="h-12 px-8 font-semibold shadow-lg">
-                  {busy ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      {pipe.step === 'uploading-image' ? 'Uploading image…' : pipe.step === 'uploading-metadata' ? 'Uploading metadata…' : 'Waiting for wallet…'}
+            )}
+
+            {/* ════════════════════════════════════════════════════════════
+                STEP 3 — Review & Submit
+               ════════════════════════════════════════════════════════════ */}
+            {video && targetValid && endDate && !isDone && (
+              <div className="p-6 rounded-2xl bg-linear-to-br from-primary/5 to-primary/10 border border-primary/20 space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-primary" />
+                  <h2 className="font-semibold">Review Your Market</h2>
+                </div>
+
+                {/* Auto-generated question preview */}
+                <div className="p-4 rounded-xl bg-background/60 border border-border/30 space-y-3">
+                  <p className="text-sm font-semibold text-foreground leading-relaxed">
+                    {generatedQuestion}
+                  </p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Eye className="h-3 w-3" />
+                      Current: {formatNumber(currentValue)}
                     </span>
-                  ) : (
-                    <span className="flex items-center gap-2"><Plus className="h-4 w-4" /> Create Market</span>
-                  )}
-                </Button>
-                <Button type="button" variant="ghost" disabled={busy} onClick={() => router.push('/markets')} className="h-12 text-muted-foreground">Cancel</Button>
+                    <span className="flex items-center gap-1">
+                      <Zap className="h-3 w-3" />
+                      Target: {formatNumber(parsedTarget!)}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <CalendarIcon className="h-3 w-3" />
+                      Deadline: {format(endDate, 'MMM d, yyyy')}
+                    </span>
+                  </div>
+                  <div className="pt-2 border-t border-border/20">
+                    <p className="text-[11px] text-muted-foreground/60 leading-relaxed">
+                      Resolves YES if the video&apos;s {METRIC_LABELS[metric].toLowerCase()} reach or exceed{' '}
+                      <span className="font-semibold text-muted-foreground">{formatNumber(parsedTarget!)}</span> by{' '}
+                      {format(endDate, 'PPP')}. Resolution source: YouTube Data API.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Thumbnail preview */}
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-background/40 border border-border/20">
+                  <img
+                    src={video.thumbnail}
+                    alt="Thumbnail"
+                    className="w-20 h-12 object-cover rounded-lg"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{video.title}</p>
+                    <p className="text-[10px] text-muted-foreground">{video.channel_name}</p>
+                  </div>
+                  <a
+                    href={`https://youtube.com/watch?v=${video.video_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </div>
+
+                {/* Submit */}
+                <div className="flex items-center gap-4 pt-2">
+                  <Button
+                    onClick={handleSubmit}
+                    variant="success"
+                    disabled={busy}
+                    className="h-12 px-8 font-semibold shadow-lg"
+                  >
+                    {busy ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        {pipe.step === 'checking-indexer'    ? 'Checking...'       :
+                         pipe.step === 'uploading-metadata'  ? 'Uploading...'      :
+                                                               'Waiting for wallet...'}
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Plus className="h-4 w-4" /> Create Market
+                      </span>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => router.push('/markets')}
+                    className="h-12 text-muted-foreground"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+
+                <p className="text-[10px] text-muted-foreground/50">
+                  You will be the market authority. After the deadline passes, you can settle the market from its detail page.
+                </p>
               </div>
-            </div>
-          )}
-        </form>
+            )}
+
+            {/* ── Success card ──────────────────────────────────────────── */}
+            {isDone && (
+              <div className="p-6 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-full bg-emerald-500/20">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-emerald-400">Market #{pipe.marketId} is Live!</h3>
+                    <p className="text-sm text-muted-foreground">Your prediction market is on-chain and ready for trading.</p>
+                  </div>
+                </div>
+                {pipe.txSignature && (
+                  <p className="text-xs font-mono text-muted-foreground/50 break-all">
+                    tx: {pipe.txSignature}
+                  </p>
+                )}
+                <div className="flex items-center gap-3">
+                  <Button
+                    onClick={() => router.push(`/market/${pipe.marketId}`)}
+                    className="gap-2"
+                  >
+                    View Market <ArrowRight className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" onClick={handleReset}>
+                    Create Another
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </main>
+
+      {/* ── Bottom progress bar ──────────────────────────────────────────── */}
+      {inFlight && (
+        <div className={cn(
+          'fixed bottom-0 left-0 right-0 z-50',
+          'bg-background/95 backdrop-blur-md border-t',
+          isDone  ? 'border-emerald-500/30' :
+          isError ? 'border-red-500/30'     :
+                    'border-border/25',
+        )}>
+          <div className="h-0.5 w-full bg-muted/20 overflow-hidden">
+            <div
+              className={cn(
+                'h-full transition-all duration-700 ease-out',
+                isDone  ? 'bg-emerald-500' :
+                isError ? 'bg-red-500'     :
+                          'bg-primary',
+              )}
+              style={{
+                width: `${pct}%`,
+                ...(busy ? {
+                  backgroundImage: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%)',
+                  backgroundSize: '200% 100%',
+                  animation: 'progress-shimmer 1.6s ease-in-out infinite',
+                } : {}),
+              }}
+            />
+          </div>
+
+          <div className="container mx-auto px-4 max-w-3xl">
+            <div className="flex items-center gap-3 py-3">
+              <div className="shrink-0">
+                {busy    && <Loader2      className="h-4 w-4 animate-spin text-primary" />}
+                {isDone  && <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+                {isError && <AlertCircle  className="h-4 w-4 text-red-400" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                {isError ? (
+                  <p className="text-sm font-medium text-red-400 truncate">{pipe.error}</p>
+                ) : (
+                  <p className={cn(
+                    'text-sm font-medium truncate',
+                    isDone ? 'text-emerald-400' : 'text-foreground/80',
+                  )}>
+                    {stepLabel(pipe.step, pipe.marketId)}
+                  </p>
+                )}
+              </div>
+              {isDone && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-3 text-xs gap-1.5 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                  onClick={() => router.push(`/market/${pipe.marketId}`)}
+                >
+                  View Market #{pipe.marketId}
+                  <ArrowRight className="h-3 w-3" />
+                </Button>
+              )}
+              {isError && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-3 text-xs shrink-0 border-red-500/30 text-red-400 hover:bg-red-500/10"
+                  onClick={() => setPipe({
+                    step: 'idle', metadataUrl: null,
+                    marketId: null, txSignature: null, error: null,
+                  })}
+                >
+                  Try Again
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Round a number up to a "nice" value for target suggestions. */
+function roundUpNice(n: number): number {
+  if (n <= 0) return 1000;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(n)));
+  const normalized = n / magnitude;
+  const niceSteps = [1, 1.5, 2, 2.5, 3, 5, 7.5, 10];
+  for (const step of niceSteps) {
+    if (step >= normalized) return Math.round(step * magnitude);
+  }
+  return Math.round(10 * magnitude);
+}
+
+/** Generate target suggestions based on current value. */
+function getTargetSuggestions(current: number): number[] {
+  if (current <= 0) return [1000, 10_000, 100_000, 1_000_000];
+  return [
+    roundUpNice(current * 1.5),
+    roundUpNice(current * 2),
+    roundUpNice(current * 5),
+    roundUpNice(current * 10),
+  ].filter((v, i, arr) => arr.indexOf(v) === i); // dedupe
+}
+
+/** Parse a target string — supports plain numbers and K/M/B suffixes. */
+function parseTarget(input: string): number | null {
+  const s = input.trim().replace(/,/g, '');
+  if (!s) return null;
+
+  const suffixMatch = s.match(/^(\d+(?:\.\d+)?)\s*([kKmMbB])$/);
+  if (suffixMatch) {
+    const num = parseFloat(suffixMatch[1]);
+    const suffix = suffixMatch[2].toLowerCase();
+    const multipliers: Record<string, number> = { k: 1_000, m: 1_000_000, b: 1_000_000_000 };
+    return Math.round(num * multipliers[suffix]);
+  }
+
+  const num = parseInt(s, 10);
+  return isNaN(num) || num <= 0 ? null : num;
 }
