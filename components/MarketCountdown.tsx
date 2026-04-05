@@ -25,7 +25,7 @@ function pad2(n: number) {
 function RollingNum({ value, className }: { value: string; className?: string }) {
   const [curr, setCurr]   = useState(value);
   const [prev, setPrev]   = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     if (value === curr) return;
