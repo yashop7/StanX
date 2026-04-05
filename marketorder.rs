@@ -290,7 +290,7 @@ impl<'info> MarketOrder<'info> {
                 OrderSide::Sell => remaining_amount.min(book_remaining_qty),
             };
 
-            // Guard: if min_qty is 0 the taker can't afford even one token at this price — skip
+            // if min_qty is 0 the taker can't afford even one token at this price, we will skip
             if min_qty == 0 {
                 idx += 1;
                 continue;
@@ -302,6 +302,12 @@ impl<'info> MarketOrder<'info> {
                 .ok_or(PredictionMarketError::MathOverflow)?
                 .checked_div(TOKEN_DECIMALS_SCALE)
                 .ok_or(PredictionMarketError::MathOverflow)?;
+
+            // Skip if rounding yields zero collateral (prevents free-token exploit)
+            if collateral_amount == 0 {
+                idx += 1;
+                continue;
+            }
 
             // Update book order's filled quantity
             matching_orders[idx].filledquantity = book_filled_qty
@@ -447,6 +453,7 @@ impl<'info> MarketOrder<'info> {
             emit!(OrderMatched {
                 market_id,
                 maker_order_id,
+                taker_order_id: 0, // For market orders never rest on book
                 taker_side: side,
                 taker: self.user.key(),
                 maker: maker_pubkey,
@@ -505,10 +512,6 @@ impl<'info> MarketOrder<'info> {
                     .checked_sub(collateral_spent)
                     .ok_or(PredictionMarketError::MathOverflow)?;
 
-                market.total_collateral_locked = market
-                    .total_collateral_locked
-                    .checked_sub(collateral_spent)
-                    .ok_or(PredictionMarketError::MathOverflow)?;
 
                 // Returning remaining collateral if any remains
                 if remaining_amount > 0 {
@@ -646,7 +649,8 @@ impl<'info> MarketOrder<'info> {
             user: self.user.key(),
             side,
             token_type,
-            total_quantity: order_amount - remaining_amount,
+            initial_quantity : order_amount,
+            filled_quantity : order_amount - remaining_amount,
             orders_matched: iteration,
             timestamp: Clock::get()?.unix_timestamp,
         });

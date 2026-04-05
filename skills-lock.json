@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "Landing Page Optimizer": {
+      "source": "jmsktm/claude-settings",
+      "sourceType": "github",
+      "computedHash": "edd7351d7cc907d1ffc179402a639be2dbff5cd6424330e20b69eb7ea1e5d1f7"
+    },
     "frontend-design": {
       "source": "mager/frontend-design",
       "sourceType": "github",
