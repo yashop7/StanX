@@ -23,6 +23,11 @@ import {
 import { PREDICTION_MARKET_TURBIN3_PROGRAM_ADDRESS } from "@/generated/programs";
 import { rpc } from "./client";
 import { fetchOnChainOrderBook } from "./orderbook";
+import {
+  fetchBackendMarkets,
+  fetchBackendMarket,
+  fetchBackendOrderbook,
+} from "@/lib/api/backend";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -126,7 +131,10 @@ async function tryFetchMetadata(url: string): Promise<OffChainMeta> {
     return { question: url };
   }
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(3_000) });
+    // Arweave/Irys metadata is immutable — cache it for 5 minutes to avoid
+    // hitting the gateway on every request. AbortSignal.timeout is not compatible
+    // with Next.js fetch cache, so we rely on the revalidate TTL instead.
+    const res = await fetch(url, { next: { revalidate: 300 } });
     if (!res.ok) return {};
     const json = (await res.json()) as Record<string, unknown>;
 
@@ -237,20 +245,210 @@ export async function fetchAllDisplayMarkets(): Promise<DisplayMarket[]> {
   // Step 2: batch-fetch all market accounts
   const maybeAccounts = await fetchAllMaybeMarket(rpc, addresses);
 
-  // Step 3: enrich each market in parallel
-  const enriched = await Promise.all(
-    maybeAccounts.map(async (maybeAccount, i) => {
-      if (!maybeAccount.exists) return null;
-      const { data } = maybeAccount;
-      const [book, meta] = await Promise.all([
-        fetchOnChainOrderBook(data.marketId).catch(() => null),
-        tryFetchMetadata(data.metaDataUrl),
-      ]);
-      return enrichChainMarket(addresses[i], data, book, meta);
-    }),
-  );
+  // Step 3: enrich markets in batches to avoid RPC 429s.
+  // Metadata fetches are HTTP (not Solana RPC) so they run freely in parallel;
+  // only the orderbook RPC calls are throttled — 3 at a time with 300ms between batches.
+  const BATCH_SIZE = 3;
+  const BATCH_DELAY_MS = 300;
+
+  const tasks = maybeAccounts.map((maybeAccount, i) => async () => {
+    if (!maybeAccount.exists) return null;
+    const { data } = maybeAccount;
+    const [book, meta] = await Promise.all([
+      fetchOnChainOrderBook(data.marketId).catch(() => null),
+      tryFetchMetadata(data.metaDataUrl),
+    ]);
+    return enrichChainMarket(addresses[i], data, book, meta);
+  });
+
+  const enriched: (DisplayMarket | null)[] = [];
+  for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
+    const batch = await Promise.all(tasks.slice(i, i + BATCH_SIZE).map(fn => fn()));
+    enriched.push(...batch);
+    if (i + BATCH_SIZE < tasks.length) {
+      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+    }
+  }
 
   return (enriched.filter(Boolean) as DisplayMarket[]).sort((a, b) => a.marketId - b.marketId);
+}
+
+// ── Backend-powered variants (no Solana RPC for reads) ─────────────────────────
+
+/** 1_000_000 micro-USDC = price 1.0 (100%) on-chain */
+const CHAIN_PRICE_SCALE = 1_000_000;
+
+/**
+ * Derive yes/no price from the backend REST orderbook snapshot.
+ * Uses best bid + best ask of YES orders (mid-price), same logic as the on-chain path.
+ */
+function derivePriceFromBackendBook(book: {
+  yes_buy_orders: Array<{ price: number }>;
+  yes_sell_orders: Array<{ price: number }>;
+}): { yesPrice: number; noPrice: number } {
+  const bestBid = book.yes_buy_orders[0]?.price;   // sorted DESC already
+  const bestAsk = book.yes_sell_orders[0]?.price;  // sorted ASC already
+
+  let yesPrice: number;
+  if (bestBid !== undefined && bestAsk !== undefined) {
+    yesPrice = (bestBid + bestAsk) / 2 / CHAIN_PRICE_SCALE;
+  } else if (bestAsk !== undefined) {
+    yesPrice = bestAsk / CHAIN_PRICE_SCALE;
+  } else if (bestBid !== undefined) {
+    yesPrice = bestBid / CHAIN_PRICE_SCALE;
+  } else {
+    yesPrice = 0.5;
+  }
+
+  return { yesPrice, noPrice: 1 - yesPrice };
+}
+
+/**
+ * Fetches all markets from the **backend** (no Solana RPC).
+ * PDA is derived locally (pure math). Metadata still fetched from metaDataUrl.
+ * Sorted by marketId ascending.
+ */
+export async function fetchAllDisplayMarketsFromBackend(): Promise<DisplayMarket[]> {
+  const backendMarkets = await fetchBackendMarkets();
+  if (backendMarkets.length === 0) return [];
+
+  const BATCH_SIZE = 5;
+  const BATCH_DELAY_MS = 100;
+
+  const tasks = backendMarkets.map((bm) => async (): Promise<DisplayMarket | null> => {
+    const [pdaAddress, orderbookResult, meta] = await Promise.all([
+      deriveMarketPDA(bm.market_id),
+      fetchBackendOrderbook(bm.market_id).catch(() => null),
+      tryFetchMetadata(bm.meta_data_url),
+    ]);
+
+    const { yesPrice, noPrice } = orderbookResult
+      ? derivePriceFromBackendBook(orderbookResult)
+      : { yesPrice: 0.5, noPrice: 0.5 };
+
+    const isSettled = bm.status === "Settled" || bm.status === "Closed";
+    const winningOutcome: DisplayMarket["winningOutcome"] =
+      bm.winning_outcome === "OutcomeA" ? "YES"
+      : bm.winning_outcome === "OutcomeB" ? "NO"
+      : bm.winning_outcome === "Neither" ? "NEITHER"
+      : null;
+
+    const endDate = new Date(bm.settlement_deadline * 1000);
+    const msLeft = endDate.getTime() - Date.now();
+    const status: DisplayMarket["status"] = isSettled
+      ? "resolved"
+      : msLeft <= 3 * 24 * 60 * 60 * 1000
+      ? "ending-soon"
+      : "active";
+
+    return {
+      address: pdaAddress as string,
+      marketId: bm.market_id,
+      authority: bm.authority,
+      collateralMint: bm.collateral_mint,
+      outcomeYesMint: bm.outcome_yes_mint,
+      outcomeNoMint: bm.outcome_no_mint,
+      question: meta.question ?? `Market #${bm.market_id}`,
+      yesPrice,
+      noPrice,
+      volume: 0, // not tracked in backend — would need on-chain for this
+      endDate,
+      isSettled,
+      winningOutcome,
+      status,
+      metaDataUrl: bm.meta_data_url,
+      image: meta.image ?? `https://picsum.photos/seed/${bm.market_id}/800/600`,
+      category: meta.category ?? "General",
+      description: meta.description ?? `On-chain prediction market #${bm.market_id}.`,
+      resolutionCriteria: meta.resolutionCriteria ?? "Resolves based on on-chain settlement.",
+      resolutionSource: meta.resolutionSource,
+      participants: 0,
+      videoId: meta.videoId,
+      videoUrl: meta.videoUrl,
+      channelName: meta.channelName,
+      metric: meta.metric,
+      target: meta.target,
+      baselineValue: meta.baselineValue,
+    };
+  });
+
+  const enriched: (DisplayMarket | null)[] = [];
+  for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
+    const batch = await Promise.all(tasks.slice(i, i + BATCH_SIZE).map(fn => fn()));
+    enriched.push(...batch);
+    if (i + BATCH_SIZE < tasks.length) {
+      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
+    }
+  }
+
+  return (enriched.filter(Boolean) as DisplayMarket[]).sort((a, b) => a.marketId - b.marketId);
+}
+
+/**
+ * Fetches a single market from the **backend** (no Solana RPC).
+ */
+export async function fetchDisplayMarketByIdFromBackend(marketId: number): Promise<DisplayMarket | null> {
+  let bm;
+  try {
+    bm = await fetchBackendMarket(marketId);
+  } catch {
+    return null; // market not found in backend
+  }
+
+  const [pdaAddress, orderbookResult, meta] = await Promise.all([
+    deriveMarketPDA(bm.market_id),
+    fetchBackendOrderbook(bm.market_id).catch(() => null),
+    tryFetchMetadata(bm.meta_data_url),
+  ]);
+
+  const { yesPrice, noPrice } = orderbookResult
+    ? derivePriceFromBackendBook(orderbookResult)
+    : { yesPrice: 0.5, noPrice: 0.5 };
+
+  const isSettled = bm.status === "Settled" || bm.status === "Closed";
+  const winningOutcome: DisplayMarket["winningOutcome"] =
+    bm.winning_outcome === "OutcomeA" ? "YES"
+    : bm.winning_outcome === "OutcomeB" ? "NO"
+    : bm.winning_outcome === "Neither" ? "NEITHER"
+    : null;
+
+  const endDate = new Date(bm.settlement_deadline * 1000);
+  const msLeft = endDate.getTime() - Date.now();
+  const status: DisplayMarket["status"] = isSettled
+    ? "resolved"
+    : msLeft <= 3 * 24 * 60 * 60 * 1000
+    ? "ending-soon"
+    : "active";
+
+  return {
+    address: pdaAddress as string,
+    marketId: bm.market_id,
+    authority: bm.authority,
+    collateralMint: bm.collateral_mint,
+    outcomeYesMint: bm.outcome_yes_mint,
+    outcomeNoMint: bm.outcome_no_mint,
+    question: meta.question ?? `Market #${bm.market_id}`,
+    yesPrice,
+    noPrice,
+    volume: 0,
+    endDate,
+    isSettled,
+    winningOutcome,
+    status,
+    metaDataUrl: bm.meta_data_url,
+    image: meta.image ?? `https://picsum.photos/seed/${bm.market_id}/800/600`,
+    category: meta.category ?? "General",
+    description: meta.description ?? `On-chain prediction market #${bm.market_id}.`,
+    resolutionCriteria: meta.resolutionCriteria ?? "Resolves based on on-chain settlement.",
+    resolutionSource: meta.resolutionSource,
+    participants: 0,
+    videoId: meta.videoId,
+    videoUrl: meta.videoUrl,
+    channelName: meta.channelName,
+    metric: meta.metric,
+    target: meta.target,
+    baselineValue: meta.baselineValue,
+  };
 }
 
 /**

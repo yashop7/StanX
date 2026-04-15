@@ -12,6 +12,7 @@ import { fetchOnChainOrderBook } from '@/lib/blockchain/orderbook';
 import type { ChainLevel, OutcomeToken } from '@/lib/blockchain/orderbook';
 
 const REFRESH_INTERVAL = 30;
+const INITIAL_DELAY_MS = 20_000; // wait 20s after page load before first RPC fetch
 
 interface OnChainOrderBookProps {
   marketId: string;
@@ -38,7 +39,7 @@ export const OnChainOrderBook = ({
   const [bids, setBids] = useState<ChainLevel[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
-  const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
+  const [countdown, setCountdown] = useState(INITIAL_DELAY_MS / 1000);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
@@ -102,13 +103,15 @@ export const OnChainOrderBook = ({
   );
 
   useEffect(() => {
-    buildAndSet();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buildAndSet]);
-
-  useEffect(() => {
-    const interval = setInterval(() => buildAndSet(), REFRESH_INTERVAL * 1000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const timer = setTimeout(() => {
+      buildAndSet();
+      interval = setInterval(() => buildAndSet(), REFRESH_INTERVAL * 1000);
+    }, INITIAL_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buildAndSet]);
 

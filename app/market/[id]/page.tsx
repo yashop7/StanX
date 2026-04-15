@@ -69,20 +69,22 @@ const MarketDetail = () => {
     }
     setIsLoading(true);
     setError(null);
-    // Fetch the specific market and all markets for the switcher in parallel
-    const [marketResult, marketsResult] = await Promise.all([
-      getMarketByIdAction(marketId),
-      getMarketsAction(),
-    ]);
+    // Fetch only this market first — avoids the N-orderbook burst from getMarketsAction
+    const marketResult = await getMarketByIdAction(marketId);
     if (marketResult.success && marketResult.market) {
       setMarket(marketResult.market);
     } else {
       setError(marketResult.error ?? 'Market not found');
     }
-    if (marketsResult.success && marketsResult.markets) {
-      setAllMarkets(marketsResult.markets);
-    }
     setIsLoading(false);
+
+    // Load all markets for the switcher after main content is ready,
+    // so it doesn't compete with the primary RPC calls on page load.
+    getMarketsAction().then(marketsResult => {
+      if (marketsResult.success && marketsResult.markets) {
+        setAllMarkets(marketsResult.markets);
+      }
+    });
   }, [marketId]);
 
   useEffect(() => { load(); }, [load]);
