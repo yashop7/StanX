@@ -5,7 +5,7 @@ import { fetchIndexerHealth } from '@/lib/api/backend';
 import type { IndexerHealth } from '@/lib/api/backend';
 
 /**
- * Polls GET /health every 15 seconds.
+ * Polls GET /health every 30 seconds.
  * Returns indexerOk=true optimistically until the first response arrives,
  * so the UI doesn't flash-disable on initial load.
  */
@@ -27,7 +27,7 @@ export function useIndexerHealth() {
     }
 
     poll();
-    const id = setInterval(poll, 15_000);
+    const id = setInterval(poll, 30_000);
     return () => {
       cancelled = true;
       clearInterval(id);

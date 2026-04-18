@@ -270,7 +270,7 @@ export const TradingChartRecharts = ({
             />
 
             <Tooltip
-              content={hasRealData ? <CustomTooltip /> : <></>}
+              content={hasRealData ? <CustomTooltip /> : () => null}
               cursor={hasRealData
                 ? { stroke: "rgba(255,255,255,0.12)", strokeWidth: 1 }
                 : false
