@@ -30,8 +30,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { formatDistanceToNow } from 'date-fns';
-import { getMarketByIdAction, getMarketsAction } from '@/app/markets/actions';
-import type { DisplayMarket } from '@/lib/blockchain/markets';
+import { useMarket, useAllMarkets } from '@/hooks/use-markets';
 import { UserStatsCard } from '@/components/UserStatsCard';
 import { buildCloseMarketInstruction, buildClaimRewardsInstruction, buildSetWinnerInstruction } from '@/lib/blockchain/market';
 import { MarketCountdown, MarketCountdownBlocks } from '@/components/MarketCountdown';
@@ -47,10 +46,6 @@ const MarketDetail = () => {
   const rawId = params?.id as string;
   const marketId = parseInt(rawId, 10);
 
-  const [market, setMarket] = useState<DisplayMarket | null>(null);
-  const [allMarkets, setAllMarkets] = useState<DisplayMarket[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedTokenType, setSelectedTokenType] = useState<'yes' | 'no'>('yes');
   const walletSession = useWalletSession();
   const userPubkey = walletSession?.account?.address as string | undefined;
@@ -61,33 +56,12 @@ const MarketDetail = () => {
   const [resolution, setResolution] = useState<MarketResolution | null>(null);
   const [resolutionLoading, setResolutionLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    if (isNaN(marketId)) {
-      setError('Invalid market ID');
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    // Fetch only this market first — avoids the N-orderbook burst from getMarketsAction
-    const marketResult = await getMarketByIdAction(marketId);
-    if (marketResult.success && marketResult.market) {
-      setMarket(marketResult.market);
-    } else {
-      setError(marketResult.error ?? 'Market not found');
-    }
-    setIsLoading(false);
-
-    // Load all markets for the switcher after main content is ready,
-    // so it doesn't compete with the primary RPC calls on page load.
-    getMarketsAction().then(marketsResult => {
-      if (marketsResult.success && marketsResult.markets) {
-        setAllMarkets(marketsResult.markets);
-      }
-    });
-  }, [marketId]);
-
-  useEffect(() => { load(); }, [load]);
+  // SWR-cached market data. Deduplicates requests (fixes the double-POST issue in dev
+  // where Strict Mode would double-invoke effects), caches for 15s, revalidates on focus.
+  const { market, error: marketError, isLoading, refresh: refreshMarket } = useMarket(marketId);
+  const { markets: allMarkets } = useAllMarkets();
+  const error = isNaN(marketId) ? 'Invalid market ID' : marketError?.message ?? null;
+  const load = refreshMarket;
 
   // Fetch market trades from backend
   const loadTrades = useCallback(() => {

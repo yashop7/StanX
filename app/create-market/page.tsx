@@ -8,7 +8,7 @@
  * Step 3: Review auto-generated market → submit on-chain
  */
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { Button } from '@/components/ui/button';
@@ -29,12 +29,13 @@ import { createWalletTransactionSigner } from '@solana/client';
 import { address } from '@solana/kit';
 import { USDC_MINT, SOLANA_NETWORK } from '@/lib/constants';
 import { getInitializeMarketInstructionAsync } from '@/generated/instructions/initializeMarket';
-import { fetchBackendMarkets, fetchIndexerHealth } from '@/lib/api/backend';
+import { fetchIndexerHealth } from '@/lib/api/backend';
+import { getAllMarkets } from '@/lib/blockchain/market';
 import type { VideoPreview } from '@/lib/api/backend';
 import { uploadMetadataAction, previewVideoAction } from './actions';
 import { buildVideoMarketMetadata, formatNumber, METRIC_LABELS, type VideoMetric } from './metadata';
 
-// ── YouTube URL detection ────────────────────────────────────────────────────
+// ── YouTube URL detection────────
 
 const YT_PATTERNS = [
   /(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]{11})/,
@@ -48,7 +49,7 @@ function extractVideoId(url: string): string | null {
   return null;
 }
 
-// ── Metric config ────────────────────────────────────────────────────────────
+// ── Metric config ─────
 
 const METRICS: { key: VideoMetric; icon: typeof Eye; color: string }[] = [
   { key: 'views',    icon: Eye,            color: 'blue' },
@@ -64,7 +65,7 @@ function getCurrentValue(video: VideoPreview, metric: VideoMetric): number {
   }
 }
 
-// ── Pipeline types ───────────────────────────────────────────────────────────
+// ── Pipeline types ────
 
 type PipeStep = 'idle' | 'checking-indexer' | 'uploading-metadata' | 'initializing-market' | 'done' | 'error';
 
@@ -96,12 +97,13 @@ function stepLabel(step: PipeStep, marketId: number | null): string {
   }
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
 
 export default function CreateMarket() {
   const router = useRouter();
   const wallet = useWalletSession();
   const { send } = useSendTransaction();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const urlInputRef = useRef<HTMLInputElement>(null);
 
   // Step 1: URL input
@@ -125,7 +127,7 @@ export default function CreateMarket() {
   const isDone = pipe.step === 'done';
   const isError = pipe.step === 'error';
 
-  // ── Fetch video preview ──────────────────────────────────────────────────
+  // ── Fetch video preview──────
 
   const handleFetchPreview = useCallback(async () => {
     const url = urlInput.trim();
@@ -165,13 +167,13 @@ export default function CreateMarket() {
     setPipe({ step: 'idle', metadataUrl: null, marketId: null, txSignature: null, error: null });
   };
 
-  // ── Target parsing ───────────────────────────────────────────────────────
+  // ── Target parsing 
 
   const parsedTarget = parseTarget(targetInput);
   const currentValue = video ? getCurrentValue(video, metric) : 0;
   const targetValid = parsedTarget !== null && parsedTarget > currentValue;
 
-  // ── Submit handler ───────────────────────────────────────────────────────
+  // ── Submit handler 
 
   const handleSubmit = async () => {
     if (!wallet) { toast.error('Connect your wallet first'); return; }
@@ -209,9 +211,9 @@ export default function CreateMarket() {
       });
       const metadataUrl = await uploadMetadataAction(metadata);
 
-      // Get next market ID
-      const markets = await fetchBackendMarkets();
-      const marketId = markets.length === 0 ? 1 : Math.max(...markets.map(m => m.market_id)) + 1;
+      // Get next market ID from chain (not indexer, which may lag)
+      const onChainMarkets = await getAllMarkets();
+      const marketId = onChainMarkets.length === 0 ? 1 : Math.max(...onChainMarkets.map(m => m.data.marketId)) + 1;
       setPipe(p => ({ ...p, step: 'initializing-market', metadataUrl, marketId }));
 
       // Initialize on-chain
@@ -229,7 +231,25 @@ export default function CreateMarket() {
       setPipe(p => ({ ...p, step: 'done', txSignature: signature }));
       toast.success(`Market #${marketId} is live!`);
     } catch (err: unknown) {
+      // Log transactionPlanResult for on-chain error details
+      if (err && typeof err === 'object' && 'transactionPlanResult' in err) {
+        console.error('[create-market] transactionPlanResult:', (err as any).transactionPlanResult);
+        const results: any[] = (err as any).transactionPlanResult ?? [];
+        const failed = results.find((r: any) => r?.error);
+        if (failed?.error) {
+          const logs: string[] = failed.error?.context?.logs ?? [];
+          console.error('[create-market] on-chain logs:', logs);
+          const programError = logs.findLast((l: string) => l.includes('Error') || l.includes('failed'));
+          if (programError) {
+            const msg = `On-chain error: ${programError}`;
+            setPipe(p => ({ ...p, step: 'error', error: msg }));
+            toast.error('Transaction failed', { description: programError });
+            return;
+          }
+        }
+      }
       const msg = err instanceof Error ? err.message : String(err);
+      console.error('[create-market] error:', err);
       setPipe(p => ({ ...p, step: 'error', error: msg }));
       toast.error('Failed to create market', { description: msg });
     }
@@ -237,13 +257,13 @@ export default function CreateMarket() {
 
   const pct = progressPct(pipe.step);
 
-  // ── Generated market question preview ────────────────────────────────────
+  // ── Generated market question preview 
 
   const generatedQuestion = video && parsedTarget
     ? `Will "${video.title}" reach ${formatNumber(parsedTarget)} ${METRIC_LABELS[metric].toLowerCase()}?`
     : null;
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render 
 
   return (
     <div className={cn('min-h-screen bg-background', inFlight && 'pb-20')}>
@@ -273,7 +293,7 @@ export default function CreateMarket() {
         </div>
 
         {/* Wallet gate */}
-        {!wallet ? (
+        {!mounted || !wallet ? (
           <div className="flex flex-col items-center justify-center py-20 rounded-2xl bg-muted/20 border border-border/30 text-center space-y-4">
             <div className="p-4 rounded-full bg-muted/40 border border-border/40">
               <AlertCircle className="h-8 w-8 text-muted-foreground" />
@@ -345,7 +365,7 @@ export default function CreateMarket() {
                   </p>
                 </>
               ) : (
-                /* ── Video Preview Card ─────────────────────────────────── */
+                /* ── Video Preview Card ───── */
                 <div className="rounded-xl overflow-hidden border border-border/30">
                   {/* Thumbnail hero */}
                   <div className="relative aspect-video bg-muted/20">
@@ -663,7 +683,7 @@ export default function CreateMarket() {
               </div>
             )}
 
-            {/* ── Success card ──────────────────────────────────────────── */}
+            {/* ── Success card */}
             {isDone && (
               <div className="p-6 rounded-2xl bg-emerald-500/5 border border-emerald-500/20 space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="flex items-center gap-3">
@@ -697,7 +717,7 @@ export default function CreateMarket() {
         )}
       </main>
 
-      {/* ── Bottom progress bar ──────────────────────────────────────────── */}
+      {/* ── Bottom progress bar */}
       {inFlight && (
         <div className={cn(
           'fixed bottom-0 left-0 right-0 z-50',
@@ -776,7 +796,7 @@ export default function CreateMarket() {
   );
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ─
 
 /** Round a number up to a "nice" value for target suggestions. */
 function roundUpNice(n: number): number {

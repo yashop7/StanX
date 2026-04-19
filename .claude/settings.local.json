@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k,v\\) for k,v in {**d.get\\(''''dependencies'''',{}\\), **d.get\\(''''devDependencies'''',{}\\)}.items\\(\\) if any\\(x in k for x in [''''metaplex'''',''''irys'''',''''umi'''',''''bundlr'''',''''bs58'''',''''arweave'''']\\)]\")",
+      "Bash(node -e \":*)",
+      "Bash(grep -r uploadb node_modules/@irys/upload-core/dist/types/*.d.ts)",
+      "Bash(bun run:*)",
+      "Bash(node -e \"require\\(''tweetnacl''\\); console.log\\(''tweetnacl ok''\\)\")",
+      "Bash(node -e \"require\\(''bs58''\\); console.log\\(''bs58 ok''\\)\")",
+      "Bash(python3 -c \":*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(bun add:*)",
+      "WebFetch(domain:arweave.net)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(curl -sI \"https://gateway.irys.xyz/7z4zCAQbXbrmYL4cXqzEc7iqhRB2HAu4GpfAUZNN4Z5N\")",
+      "Bash(/dev/null -r)",
+      "Bash(grep -r \"FAILED_TO_EXECUTE_TRANSACTION_PLAN\\\\|transactionPlanResult\" /Users/yash/Documents/CODING/Documents/Web3/prediction-market/node_modules/@solana/react-hooks/dist/*.js)",
+      "Bash(grep -r \"setWinner\\\\|set_winner\" /Users/yash/Documents/CODING/Documents/Web3/prediction-market/*.rs)",
+      "Bash(find /Users/yash/Documents/CODING/Documents/Web3/prediction-market -type f -name \"*.rs\" -exec grep -l \"set_winner\\\\|setWinner\" {} \\\\;)",
+      "Bash(grep -r \"pub struct.*Winner\\\\|pub fn.*winner\\\\|impl.*Winner\" /Users/yash/Documents/CODING/Documents/Web3/prediction-market/*.rs)",
+      "Read(//Users/yash/Documents/CODING/Documents/Web3/**)",
+      "Bash(find /Users/yash/Documents/CODING/Documents/Web3/temp/Predix-backend/solana-prediction-market-program -name \"*.rs\" -exec grep -l \"set_winner\\\\|setWinner\" {} \\\\;)",
+      "Bash(rtk git:*)",
+      "Bash(curl -s http://localhost:3003/markets)",
+      "Bash(curl -s http://localhost:3003/health)",
+      "Bash(curl -s http://localhost:3003/markets/62509)",
+      "Bash(curl -s http://localhost:3003/markets/62509/orderbook)",
+      "Bash(node_modules/.bin/tsc --noEmit --skipLibCheck)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(timeout 45 ./node_modules/.bin/tsc --noEmit --skipLibCheck)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(gtimeout 45 ./node_modules/.bin/tsc --noEmit --skipLibCheck)",
+      "Bash(./node_modules/.bin/tsc --noEmit --skipLibCheck)",
+      "Bash(lsof -ti:3000,3001,3002)"
+    ]
+  }
+}

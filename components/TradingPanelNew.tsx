@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Info, ArrowDownUp, Coins, Zap, Layers, Loader2, AlertTriangle, Trophy, Lock } from "lucide-react";
@@ -21,6 +21,7 @@ import {
   buildMergeInstruction,
   PRICE_SCALE,
 } from "@/lib/blockchain/market";
+import { classifyTxError, isUserRejection } from "@/lib/blockchain/verify-tx";
 
 interface TradingPanelNewProps {
   marketId: string;
@@ -65,6 +66,7 @@ export const TradingPanelNew = ({
   const session = useWalletSession();
   const { send, isSending } = useSendTransaction();
   const { indexerOk } = useIndexerHealth();
+  const submitting = useRef(false);
 
   useEffect(() => {
     if (selectedTokenType) {
@@ -99,60 +101,55 @@ export const TradingPanelNew = ({
         amountNum * currentPrice;
 
   const handleTrade = async () => {
-    const amountInput = parseFloat(amount);
+    if (submitting.current) return;
+    submitting.current = true;
 
-    if (!session) {
-      toast.error("Connect your wallet first.");
-      return;
-    }
-
-    if (!amount || isNaN(amountInput) || amountInput <= 0) {
-      toast.error("Please enter a valid amount.");
-      return;
-    }
-
-    // For buy: check USDC balance. For sell: check token balance.
-    // Limit buy: amountInput = shares, so USDC needed = shares × limitPrice
-    const isLimitOrder = orderType === "limit";
-    const limitPriceNumForCheck = parseFloat(limitPrice) || 0;
-    const usdcNeededForBuy = isLimitOrder
-      ? amountInput * (limitPriceNumForCheck / 100)
-      : amountInput;
-    if (action === "buy" && usdcNeededForBuy > balance) {
-      toast.error("Insufficient USDC balance.", {
-        description: `You need $${usdcNeededForBuy.toFixed(2)} but have $${balance.toLocaleString()}.`,
-      });
-      return;
-    }
-    if (action === "sell" && amountInput > tokenBalance) {
-      toast.error(`Insufficient ${tokenType.toUpperCase()} token balance.`, {
-        description: `You have ${tokenBalance.toLocaleString()} ${tokenType.toUpperCase()} tokens available.`,
-      });
-      return;
-    }
-
-    const outcomeToken = tokenType === "yes" ? "YES" : "NO";
-    const orderSide = action === "buy" ? "BUY" : "SELL";
-    const { signer } = createWalletTransactionSigner(session);
+    // Hoist these so they're visible in both the try and catch blocks.
+    // orderStartTime MUST be set just before send() — the catch block uses it
+    // to search the backend indexer for records placed around that moment.
     const numericMarketId = parseInt(marketId, 10);
+    let orderStartTime = 0;
 
-    console.log("limitPriceNum: ", limitPriceNum);
     try {
+      const amountInput = parseFloat(amount);
+
+      if (!session) {
+        toast.error("Connect your wallet first.");
+        return;
+      }
+
+      if (!amount || isNaN(amountInput) || amountInput <= 0) {
+        toast.error("Please enter a valid amount.");
+        return;
+      }
+
+      const isLimitOrder = orderType === "limit";
+      const limitPriceNumForCheck = parseFloat(limitPrice) || 0;
+      const usdcNeededForBuy = isLimitOrder
+        ? amountInput * (limitPriceNumForCheck / 100)
+        : amountInput;
+      if (action === "buy" && usdcNeededForBuy > balance) {
+        toast.error("Insufficient USDC balance.", {
+          description: `You need $${usdcNeededForBuy.toFixed(2)} but have $${balance.toLocaleString()}.`,
+        });
+        return;
+      }
+      if (action === "sell" && amountInput > tokenBalance) {
+        toast.error(`Insufficient ${tokenType.toUpperCase()} token balance.`, {
+          description: `You have ${tokenBalance.toLocaleString()} ${tokenType.toUpperCase()} tokens available.`,
+        });
+        return;
+      }
+
+      const outcomeToken = tokenType === "yes" ? "YES" : "NO";
+      const orderSide = action === "buy" ? "BUY" : "SELL";
+      const { signer } = createWalletTransactionSigner(session);
+
       if (orderType === "limit") {
-        if (
-          !limitPrice ||
-          isNaN(limitPriceNum) ||
-          limitPriceNum <= 0 ||
-          limitPriceNum > 99
-        ) {
+        if (!limitPrice || isNaN(limitPriceNum) || limitPriceNum <= 0 || limitPriceNum > 99) {
           toast.error("Please enter a valid limit price between 1¢ and 99¢.");
           return;
         }
-        // Program stores quantity in whole token units (e.g. 10 = 10 tokens).
-        // The program handles the 6-decimal token math internally.
-        // price is in micro-USDC: 50¢ → 0.5 * 1_000_000 = 500_000.
-        console.log("amountInput: ", amountInput);
-        console.log("limitPriceNum: ", limitPriceNum);
         const ixs = await buildLimitOrderInstruction({
           userSigner: signer,
           marketId: numericMarketId,
@@ -161,24 +158,21 @@ export const TradingPanelNew = ({
           quantity: BigInt(Math.round(amountInput * PRICE_SCALE)),
           price: BigInt(Math.round(limitPriceNum * 10_000)),
         });
+        orderStartTime = Math.floor(Date.now() / 1000); // capture RIGHT before send()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sig = await send({ instructions: ixs as any[], authority: signer });
         toast.success(`Limit ${action} order placed!`, {
           description: `${amountInput.toFixed(2)} ${outcomeToken} shares @ ${limitPriceNum}¢ — tx: ${String(sig).slice(0, 8)}…`,
         });
       } else {
-        // Market BUY:  amountInput is USDC dollars → send micro-USDC (× PRICE_SCALE)
-        // Market SELL: amountInput is token count  → send whole token units (no scaling)
         const ixs = await buildMarketOrderInstruction({
           userSigner: signer,
           marketId: numericMarketId,
           tokenType: outcomeToken,
           orderSide,
-          orderAmount:
-            orderSide === "BUY"
-              ? BigInt(Math.round(amountInput * PRICE_SCALE))
-              : BigInt(Math.round(amountInput * PRICE_SCALE)),
+          orderAmount: BigInt(Math.round(amountInput * PRICE_SCALE)),
         });
+        orderStartTime = Math.floor(Date.now() / 1000); // capture RIGHT before send()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sig = await send({ instructions: ixs as any[], authority: signer });
         toast.success(`Market ${action} filled!`, {
@@ -189,46 +183,76 @@ export const TradingPanelNew = ({
       setAmount("");
       setLimitPrice("");
     } catch (err) {
-      console.error("[TradingPanel] order failed:", err);
-      const errorWithLogs = err as {
-        message?: string;
-        logs?: string[];
-        cause?: unknown;
-      };
-      const simLog =
-        Array.isArray(errorWithLogs.logs) && errorWithLogs.logs.length > 0
-          ? errorWithLogs.logs[errorWithLogs.logs.length - 1]
-          : undefined;
-      toast.error("Transaction failed", {
-        description:
-          simLog || (err instanceof Error ? err.message : "Unknown error"),
-      });
+      console.error("[TradingPanel] order error:", err);
+
+      if (isUserRejection(err)) {
+        toast.info("Transaction cancelled", { description: "You rejected the transaction in your wallet." });
+        return;
+      }
+
+      // Show verifying toast. Safety timer ensures it always dismisses even if
+      // classifyTxError itself hangs (e.g. all fetch calls time out).
+      const verifyToastId = toast.loading("Verifying order on-chain…");
+      const safetyTimer = setTimeout(() => toast.dismiss(verifyToastId), 20_000);
+
+      try {
+        const outcome = await classifyTxError(err, {
+          marketId: numericMarketId,
+          userPubkey: userPubkey ?? "",
+          orderStartTime, // correctly captured before send() above
+        });
+        clearTimeout(safetyTimer);
+        toast.dismiss(verifyToastId);
+
+        if (outcome.kind === "success") {
+          toast.success(`${orderType === "limit" ? "Limit" : "Market"} ${action} order placed!`, {
+            description: `Confirmed — ${outcome.signature ? `tx: ${outcome.signature.slice(0, 8)}…` : "verified via indexer"}`,
+          });
+          setAmount("");
+          setLimitPrice("");
+        } else if (outcome.kind === "pending") {
+          toast.warning("Transaction pending", { description: outcome.hint });
+        } else {
+          toast.error("Order failed", { description: outcome.reason });
+        }
+      } catch (verifyErr) {
+        clearTimeout(safetyTimer);
+        toast.dismiss(verifyToastId);
+        console.error("[TradingPanel] verification error:", verifyErr);
+        toast.warning("Order status unknown", {
+          description: "Could not verify — check your wallet and Solana explorer.",
+        });
+      }
+    } finally {
+      submitting.current = false;
     }
   };
 
   const handleMerge = async () => {
-    const mergeAmountNum = parseFloat(mergeAmount);
-
-    if (!session) {
-      toast.error("Connect your wallet first.");
-      return;
-    }
-    if (!mergeAmount || isNaN(mergeAmountNum) || mergeAmountNum <= 0) {
-      toast.error("Please enter a valid amount to merge.");
-      return;
-    }
-    const maxMergeable = Math.min(yesBalance ?? 0, noBalance ?? 0);
-    if (mergeAmountNum > maxMergeable) {
-      toast.error("Insufficient tokens.", {
-        description: `You can merge up to ${maxMergeable.toLocaleString()} tokens.`,
-      });
-      return;
-    }
-
-    const { signer } = createWalletTransactionSigner(session);
-    const numericMarketId = parseInt(marketId, 10);
-
+    if (submitting.current) return;
+    submitting.current = true;
     try {
+      const mergeAmountNum = parseFloat(mergeAmount);
+
+      if (!session) {
+        toast.error("Connect your wallet first.");
+        return;
+      }
+      if (!mergeAmount || isNaN(mergeAmountNum) || mergeAmountNum <= 0) {
+        toast.error("Please enter a valid amount to merge.");
+        return;
+      }
+      const maxMergeable = Math.min(yesBalance ?? 0, noBalance ?? 0);
+      if (mergeAmountNum > maxMergeable) {
+        toast.error("Insufficient tokens.", {
+          description: `You can merge up to ${maxMergeable.toLocaleString()} tokens.`,
+        });
+        return;
+      }
+
+      const { signer } = createWalletTransactionSigner(session);
+      const numericMarketId = parseInt(marketId, 10);
+
       const ix = await buildMergeInstruction({
         userSigner: signer,
         marketId: numericMarketId,
@@ -240,35 +264,51 @@ export const TradingPanelNew = ({
       });
       setMergeAmount("");
     } catch (err) {
-      console.error("[TradingPanel] merge failed:", err);
-      toast.error("Merge failed", {
-        description: err instanceof Error ? err.message : "Unknown error",
-      });
+      console.error("[TradingPanel] merge error:", err);
+      if (isUserRejection(err)) {
+        toast.info("Merge cancelled", { description: "You rejected the transaction in your wallet." });
+      } else {
+        const verifyToastId = toast.loading("Verifying merge on-chain…");
+        const outcome = await classifyTxError(err);
+        toast.dismiss(verifyToastId);
+        if (outcome.kind === "success") {
+          toast.success("Tokens merged!", { description: outcome.signature ? `tx: ${outcome.signature.slice(0, 8)}…` : "Confirmed via indexer" });
+          setMergeAmount("");
+        } else if (outcome.kind === "pending") {
+          toast.warning("Merge pending", { description: outcome.hint });
+        } else {
+          toast.error("Merge failed", { description: outcome.reason });
+        }
+      }
+    } finally {
+      submitting.current = false;
     }
   };
 
   const handleSplit = async () => {
-    const splitAmountNum = parseFloat(splitAmount);
-
-    if (!session) {
-      toast.error("Connect your wallet first.");
-      return;
-    }
-    if (!splitAmount || isNaN(splitAmountNum) || splitAmountNum <= 0) {
-      toast.error("Please enter a valid amount to split.");
-      return;
-    }
-    if (splitAmountNum > balance) {
-      toast.error("Insufficient balance.", {
-        description: `You have $${balance.toLocaleString()} available.`,
-      });
-      return;
-    }
-
-    const { signer } = createWalletTransactionSigner(session);
-    const numericMarketId = parseInt(marketId, 10);
-
+    if (submitting.current) return;
+    submitting.current = true;
     try {
+      const splitAmountNum = parseFloat(splitAmount);
+
+      if (!session) {
+        toast.error("Connect your wallet first.");
+        return;
+      }
+      if (!splitAmount || isNaN(splitAmountNum) || splitAmountNum <= 0) {
+        toast.error("Please enter a valid amount to split.");
+        return;
+      }
+      if (splitAmountNum > balance) {
+        toast.error("Insufficient balance.", {
+          description: `You have $${balance.toLocaleString()} available.`,
+        });
+        return;
+      }
+
+      const { signer } = createWalletTransactionSigner(session);
+      const numericMarketId = parseInt(marketId, 10);
+
       const ix = await buildSplitInstruction({
         userSigner: signer,
         marketId: numericMarketId,
@@ -281,10 +321,24 @@ export const TradingPanelNew = ({
       });
       setSplitAmount("");
     } catch (err) {
-      console.error("[TradingPanel] split failed:", err);
-      toast.error("Split failed", {
-        description: err instanceof Error ? err.message : "Unknown error",
-      });
+      console.error("[TradingPanel] split error:", err);
+      if (isUserRejection(err)) {
+        toast.info("Split cancelled", { description: "You rejected the transaction in your wallet." });
+      } else {
+        const verifyToastId = toast.loading("Verifying split on-chain…");
+        const outcome = await classifyTxError(err);
+        toast.dismiss(verifyToastId);
+        if (outcome.kind === "success") {
+          toast.success("Tokens split!", { description: outcome.signature ? `tx: ${outcome.signature.slice(0, 8)}…` : "Confirmed via indexer" });
+          setSplitAmount("");
+        } else if (outcome.kind === "pending") {
+          toast.warning("Split pending", { description: outcome.hint });
+        } else {
+          toast.error("Split failed", { description: outcome.reason });
+        }
+      }
+    } finally {
+      submitting.current = false;
     }
   };
 

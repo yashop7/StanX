@@ -98,7 +98,6 @@ export function toDisplayQty(baseUnits: number): number {
   return baseUnits / BACKEND_QTY_SCALE;
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, { cache: 'no-store' });
@@ -179,18 +178,18 @@ interface RestOrderbookResponse {
   no_sell_orders: BackendOrder[];
 }
 
-/** GET /markets/:id/orderbook — REST snapshot (fallback; prefer WebSocket) */
+/** GET /markets/:id/orderbook, REST snapshot (fallback; prefer WebSocket) */
 export async function fetchBackendOrderbook(marketId: number): Promise<RestOrderbookResponse> {
   return get<RestOrderbookResponse>(`/markets/${marketId}/orderbook`);
 }
 
 
-/** GET /markets/:id/trades?limit=N — recent trades for a market */
+/** GET /markets/:id/trades?limit=N, recent trades for a market */
 export async function fetchMarketTrades(marketId: number, limit = 50): Promise<BackendTrade[]> {
   return get<BackendTrade[]>(`/markets/${marketId}/trades?limit=${Math.min(limit, 200)}`);
 }
 
-/** GET /markets/:id/orders/:pubkey — all orders by a user in a market */
+/** GET /markets/:id/orders/:pubkey, all orders by a user in a market */
 export async function fetchUserMarketOrders(
   marketId: number,
   userPubkey: string,
@@ -198,12 +197,12 @@ export async function fetchUserMarketOrders(
   return get<BackendOrder[]>(`/markets/${marketId}/orders/${userPubkey}`);
 }
 
-/** GET /user/:pubkey/trades?limit=N — all trades by a user across all markets */
+/** GET /user/:pubkey/trades?limit=N, all trades by a user across all markets */
 export async function fetchUserTrades(userPubkey: string, limit = 50): Promise<BackendTrade[]> {
   return get<BackendTrade[]>(`/user/${userPubkey}/trades?limit=${Math.min(limit, 200)}`);
 }
 
-/** GET /user/:pubkey/markets — all markets created/initialized by this user */
+/** GET /user/:pubkey/markets, all markets created/initialized by this user */
 export async function fetchUserCreatedMarkets(userPubkey: string): Promise<BackendMarket[]> {
   return get<BackendMarket[]>(`/user/${userPubkey}/markets`);
 }
@@ -214,7 +213,7 @@ export interface IndexerHealth {
   seconds_since_heartbeat: number;
 }
 
-/** GET /health — checks if the indexer is alive and writing heartbeats */
+/** GET /health, checks if the indexer is alive and writing heartbeats */
 export async function fetchIndexerHealth(): Promise<IndexerHealth> {
   const res = await fetch(`${BASE_URL}/health`, { cache: 'no-store' });
   if (!res.ok) {
@@ -231,7 +230,6 @@ export function getOrderbookWsUrl(marketId: number): string {
   return `${wsBase}/ws/${marketId}`;
 }
 
-// ─── Video Preview ────────────────────────────────────────────────────────────
 
 export interface VideoPreview {
   video_id: string;
@@ -245,7 +243,7 @@ export interface VideoPreview {
 }
 
 /**
- * POST /markets/preview — fetch YouTube video stats for market creation.
+ * POST /markets/preview, fetch YouTube video stats for market creation.
  * Returns video metadata + current stats so the user can set a realistic target.
  */
 export async function fetchVideoPreview(url: string): Promise<VideoPreview> {
@@ -263,7 +261,7 @@ export async function fetchVideoPreview(url: string): Promise<VideoPreview> {
   return res.json() as Promise<VideoPreview>;
 }
 
-// ─── Market Resolution ────────────────────────────────────────────────────────
+// Market Resolution
 
 export interface MarketResolution {
   market_id: number;
@@ -276,7 +274,7 @@ export interface MarketResolution {
 }
 
 /**
- * GET /markets/:id/resolution — fetch oracle-computed resolution for a settled market.
+ * GET /markets/:id/resolution, fetch oracle-computed resolution for a settled market.
  * Returns null if the oracle hasn't computed the result yet.
  */
 export async function fetchMarketResolution(marketId: number): Promise<MarketResolution | null> {

@@ -15,20 +15,21 @@ function reviveMarket(m: DisplayMarket): DisplayMarket {
   return { ...m, endDate: new Date(m.endDate) };
 }
 
-// Cached fetchers (30s / 15s TTL — see revalidate below)
+// Module-level cached fetchers.
+// unstable_cache MUST be defined at module level — recreating it inside a function
+// produces a new function reference each call, breaking Next.js's cache lookup.
+// Passing marketId as an argument lets Next.js derive a unique cache key per ID.
 const getCachedAllMarkets = unstable_cache(
   () => fetchAllDisplayMarketsFromBackend(),
   ["all-markets"],
   { revalidate: 30 },
 );
 
-function getCachedMarketById(marketId: number) {
-  return unstable_cache(
-    () => fetchDisplayMarketByIdFromBackend(marketId),
-    [`market-${marketId}`],
-    { revalidate: 15 },
-  )();
-}
+const getCachedMarketById = unstable_cache(
+  (marketId: number) => fetchDisplayMarketByIdFromBackend(marketId),
+  ["market-by-id"],
+  { revalidate: 15 },
+);
 
 export async function getMarketsAction(): Promise<{
   success: boolean;
@@ -61,20 +62,24 @@ export async function getMarketByIdAction(marketId: number): Promise<{
 }> {
   try {
     const market = await getCachedMarketById(marketId);
-    if (!market) return { success: false, error: `Market #${marketId} not found` };
+    if (!market) return { success: false, error: `Market #${marketId} does not exist` };
     return { success: true, market: reviveMarket(market) };
   } catch (error) {
-    console.error(`getMarketByIdAction (backend) failed for #${marketId}, falling back to chain:`, error);
-    // Fallback to direct chain read if backend is down
+    const msg = error instanceof Error ? error.message : String(error);
+    // Only fall back to chain if the backend itself is unreachable (not a 404)
+    const isNotFound = msg.includes('404');
+    if (isNotFound) return { success: false, error: `Market #${marketId} does not exist` };
+
+    console.error(`getMarketByIdAction backend failed for #${marketId}, falling back to chain:`, error);
     try {
       const market = await fetchDisplayMarketById(marketId);
-      if (!market) return { success: false, error: `Market #${marketId} not found on-chain` };
+      if (!market) return { success: false, error: `Market #${marketId} does not exist` };
       return { success: true, market };
     } catch (chainError) {
       console.error(`getMarketByIdAction chain fallback failed for #${marketId}:`, chainError);
       return {
         success: false,
-        error: chainError instanceof Error ? chainError.message : "Failed to fetch market",
+        error: `Backend unavailable — ${chainError instanceof Error ? chainError.message : "Failed to fetch market"}`,
       };
     }
   }

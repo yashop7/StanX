@@ -69,19 +69,21 @@ function formatSize(size: number): string {
 
 // ─── Status dot ────────────────────────────────────────────────────────────────
 
-const StatusDot = ({ status }: { status: WsStatus }) => {
+const StatusDot = ({ status, hasData }: { status: WsStatus; hasData: boolean }) => {
+  // When reconnecting but we already have data, look "live" — just syncing in background
+  const effectiveStatus = (status === 'reconnecting' && hasData) ? 'connected' : status;
   const dotClass =
-    status === 'connected'
+    effectiveStatus === 'connected'
       ? 'bg-emerald-500 animate-pulse'
-      : status === 'connecting' || status === 'reconnecting'
+      : effectiveStatus === 'connecting' || effectiveStatus === 'reconnecting'
         ? 'bg-amber-400 animate-pulse'
         : 'bg-red-500/70';
   const label =
-    status === 'connected'
+    effectiveStatus === 'connected'
       ? 'Live'
-      : status === 'connecting'
+      : effectiveStatus === 'connecting'
         ? 'Connecting…'
-        : status === 'reconnecting'
+        : effectiveStatus === 'reconnecting'
           ? 'Reconnecting…'
           : 'Offline';
   return (
@@ -149,7 +151,7 @@ export const OrderBook = ({
   return (
     <div className="overflow-hidden">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/10 dark:border-border/[0.08]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/10 dark:border-border/8">
         <div className="flex items-center gap-2">
           <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">
             Order Book
@@ -166,7 +168,7 @@ export const OrderBook = ({
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <StatusDot status={status} />
+          <StatusDot status={status} hasData={!!orderbook} />
           {orderbook && (
             <span className="text-[10px] font-mono text-muted-foreground/25 tabular-nums">
               slot {orderbook.slot.toLocaleString()}
@@ -198,7 +200,7 @@ export const OrderBook = ({
       {orderbook && (
         <div className="mt-3">
           {/* Column headers */}
-          <div className="grid grid-cols-[1fr_auto_auto] items-center px-4 py-2 border-b border-border/[0.08] text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-widest">
+          <div className="grid grid-cols-[1fr_auto_auto] items-center px-4 py-2 border-b border-border/8 text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-widest">
             <span>Price (¢)</span>
             <span className="text-right w-20 pr-3">Size</span>
             <span className="text-right w-16">Total</span>
@@ -226,7 +228,7 @@ export const OrderBook = ({
                   >
                     {/* Always-on subtle depth wash */}
                     <div
-                      className="absolute right-0 inset-y-0 pointer-events-none bg-red-500/[0.04]"
+                      className="absolute right-0 inset-y-0 pointer-events-none bg-red-500/4"
                       style={{ width: `${depthPct * 0.6}%` }}
                     />
                     {/* Hover depth wash */}
@@ -258,7 +260,7 @@ export const OrderBook = ({
           </div>
 
           {/* ── Mid price & spread ── */}
-          <div className="px-4 py-1.5 border-y border-border/[0.08] bg-muted/[0.04]">
+          <div className="px-4 py-1.5 border-y border-border/8 bg-muted/4">
             <div className="flex items-center justify-between">
               <div className="flex items-baseline gap-2">
                 <span className="text-base font-bold font-mono tabular-nums tracking-tight">
@@ -300,7 +302,7 @@ export const OrderBook = ({
                   className="relative grid grid-cols-[1fr_auto_auto] items-center px-4 py-1.5 transition-colors group cursor-pointer"
                 >
                   <div
-                    className="absolute right-0 inset-y-0 pointer-events-none bg-emerald-500/[0.04]"
+                    className="absolute right-0 inset-y-0 pointer-events-none bg-emerald-500/4"
                     style={{ width: `${depthPct * 0.6}%` }}
                   />
                   <div

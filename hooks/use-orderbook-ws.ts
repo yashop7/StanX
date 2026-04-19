@@ -47,12 +47,16 @@ function applySide(
 
 // ─── Hook ──────────────────────────────────────────────────────────────────────
 
+const MAX_RECONNECT_DELAY_MS = 30_000;
+const MAX_RECONNECT_ATTEMPTS = 10;
+
 export function useOrderbookWs(marketId: number | null) {
   const [orderbook, setOrderbook] = useState<LiveOrderbook | null>(null);
   const [status, setStatus] = useState<WsStatus>('disconnected');
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attemptRef = useRef(0);
   // Keep marketId accessible inside callbacks without re-registering them
   const marketIdRef = useRef(marketId);
   marketIdRef.current = marketId;
@@ -91,6 +95,7 @@ export function useOrderbookWs(marketId: number | null) {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      attemptRef.current = 0;
       setStatus('connected');
     };
 
@@ -122,8 +127,14 @@ export function useOrderbookWs(marketId: number | null) {
     };
 
     ws.onclose = () => {
+      attemptRef.current += 1;
+      if (attemptRef.current > MAX_RECONNECT_ATTEMPTS) {
+        setStatus('disconnected');
+        return;
+      }
+      const delay = Math.min(1000 * 2 ** attemptRef.current, MAX_RECONNECT_DELAY_MS);
       setStatus('reconnecting');
-      reconnectRef.current = setTimeout(() => connect(), 2000);
+      reconnectRef.current = setTimeout(() => connect(), delay);
     };
 
     ws.onerror = () => {
@@ -139,6 +150,7 @@ export function useOrderbookWs(marketId: number | null) {
       return;
     }
 
+    attemptRef.current = 0;
     connect();
 
     return () => {

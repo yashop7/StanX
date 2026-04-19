@@ -343,6 +343,105 @@
     filter: blur(80px);
     animation: pulse-subtle 10s ease-in-out infinite;
   }
+
+  /* Noise texture overlay — subtle film grain */
+  .noise-overlay {
+    position: relative;
+  }
+  .noise-overlay::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    background-size: 256px 256px;
+    border-radius: inherit;
+    opacity: 0.5;
+    mix-blend-mode: overlay;
+    z-index: 1;
+  }
+
+  /* Glow ring on hover — green accent outline */
+  .glow-hover {
+    @apply transition-all duration-300;
+  }
+  .glow-hover:hover {
+    box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.35), 0 0 24px rgba(52, 211, 153, 0.1), 0 20px 40px rgba(0, 0, 0, 0.5);
+    border-color: rgba(52, 211, 153, 0.2) !important;
+  }
+
+  /* Gradient text utility */
+  .gradient-text-green {
+    background: linear-gradient(135deg, #34d399 0%, #15e190 90%, rgba(255,255,255,0.8) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Section breathing room */
+  .section-padding {
+    @apply py-32 md:py-44;
+  }
+
+  /* Premium card surface */
+  .card-premium {
+    background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%);
+    border: 1px solid rgba(255,255,255,0.07);
+    box-shadow: 
+      inset 0 1px 0 rgba(255,255,255,0.05),
+      0 1px 0 rgba(255,255,255,0.02),
+      0 40px 80px -40px rgba(0, 0, 0, 0.8),
+      0 8px 24px rgba(0,0,0,0.4);
+  }
+
+  /* Terminal/code surface */
+  .surface-terminal {
+    background: #060606;
+    border: 1px solid rgba(255,255,255,0.06);
+    font-family: var(--font-mono);
+  }
+
+  /* Stat number — big like Linear */
+  .stat-display {
+    font-size: clamp(40px, 5vw, 64px);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Animated gradient shimmer for loading/accent elements */
+  .shimmer {
+    background: linear-gradient(90deg, transparent 0%, rgba(52,211,153,0.15) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer-slide 2s ease-in-out infinite;
+  }
+
+  @keyframes shimmer-slide {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+
+  /* Animated dashed line connector */
+  @keyframes dash-flow {
+    to { stroke-dashoffset: -24; }
+  }
+
+  /* Orb float animation */
+  @keyframes orb-float {
+    0%, 100% { transform: translateY(0px) scale(1); }
+    33% { transform: translateY(-20px) scale(1.05); }
+    66% { transform: translateY(10px) scale(0.97); }
+  }
+
+  .animate-orb-float {
+    animation: orb-float 12s ease-in-out infinite;
+  }
+
+  .animate-orb-float-delayed {
+    animation: orb-float 15s ease-in-out infinite reverse;
+    animation-delay: -4s;
+  }
 }
 
 /* ===================================

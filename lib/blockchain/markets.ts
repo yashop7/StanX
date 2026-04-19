@@ -391,8 +391,11 @@ export async function fetchDisplayMarketByIdFromBackend(marketId: number): Promi
   let bm;
   try {
     bm = await fetchBackendMarket(marketId);
-  } catch {
-    return null; // market not found in backend
+  } catch (e) {
+    // Only treat 404 as "not found" — rethrow everything else (network errors, 500s, wrong URL)
+    // so callers get a real error instead of a silent "Market Not Found" screen.
+    if (e instanceof Error && e.message.includes('404')) return null;
+    throw e;
   }
 
   const [pdaAddress, orderbookResult, meta] = await Promise.all([
