@@ -230,7 +230,7 @@ export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint, isSettl
             <button
               onClick={handleClaimFunds}
               disabled={isSending}
-              className="w-full py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 bg-success text-white hover:brightness-110 shadow-sm shadow-success/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 bg-emerald-500 text-white hover:bg-emerald-400 shadow-sm shadow-emerald-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSending
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />

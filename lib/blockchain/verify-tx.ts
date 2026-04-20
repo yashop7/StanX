@@ -156,13 +156,18 @@ async function verifyOnChain(
   signature: string,
 ): Promise<{ landed: boolean; failed?: boolean }> {
   try {
-    const res = await rpc.getSignatureStatuses([signature as never]).send();
+    const res = await Promise.race([
+      rpc.getSignatureStatuses([signature as never]).send(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("rpc timeout")), 8_000),
+      ),
+    ]);
     const status = res.value[0];
     if (status) {
       return { landed: true, failed: !!status.err };
     }
   } catch {
-    // RPC unreachable
+    // RPC unreachable or timed out
   }
   return { landed: false };
 }

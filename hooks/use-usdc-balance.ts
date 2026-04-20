@@ -83,6 +83,15 @@ async function doFetch(walletAddr: string, mintAddr: string): Promise<number | n
   return promise;
 }
 
+function forceRefresh(walletAddr: string, mintAddr: string): Promise<number | null> {
+  const key = `${walletAddr}:${mintAddr}`;
+  cache.delete(key);
+  inflight.delete(key);
+  const t = timers.get(key);
+  if (t) { clearTimeout(t); timers.delete(key); }
+  return doFetch(walletAddr, mintAddr);
+}
+
 function schedulePoll(walletAddr: string, mintAddr: string, delay: number) {
   const key = `${walletAddr}:${mintAddr}`;
   // Clear any existing scheduled poll for this key
@@ -144,5 +153,14 @@ export function useTokenBalance(mintAddress?: string) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wallet, mintAddress]);
 
-  return { usdcBalance, loading };
+  const refresh = (): Promise<number | null> => {
+    if (!wallet) return Promise.resolve(null);
+    const walletAddr = wallet.account.address as string;
+    const mintAddr =
+      mintAddress ??
+      (USDC_MINT[SOLANA_NETWORK as keyof typeof USDC_MINT] ?? USDC_MINT.devnet);
+    return forceRefresh(walletAddr, mintAddr);
+  };
+
+  return { usdcBalance, loading, refresh };
 }

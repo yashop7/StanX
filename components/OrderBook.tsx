@@ -199,6 +199,24 @@ export const OrderBook = ({
       {/* ════════════════════ ORDER BOOK ════════════════════ */}
       {orderbook && (
         <div className="mt-3">
+
+          {/* ── Fully empty state ── */}
+          {asks.length === 0 && bids.length === 0 ? (
+            <div className="px-4 py-12 flex flex-col items-center gap-2 text-center">
+              <div className="grid grid-cols-2 gap-0.5 mb-1 opacity-20">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className={cn('h-1.5 rounded-full bg-muted-foreground', i % 2 === 0 ? 'w-12' : 'w-8')} />
+                ))}
+              </div>
+              <p className="text-[11px] font-semibold text-muted-foreground/50 tracking-wide">
+                Order book is empty
+              </p>
+              <p className="text-[10px] text-muted-foreground/30">
+                No open bids or asks right now
+              </p>
+            </div>
+          ) : (
+          <>
           {/* Column headers */}
           <div className="grid grid-cols-[1fr_auto_auto] items-center px-4 py-2 border-b border-border/8 text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-widest">
             <span>Price (¢)</span>
@@ -330,6 +348,8 @@ export const OrderBook = ({
               );
             })}
           </div>
+          </>
+          )}
 
         </div>
       )}

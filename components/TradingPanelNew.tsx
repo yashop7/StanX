@@ -34,6 +34,8 @@ interface TradingPanelNewProps {
   onTokenTypeChange?: (value: "yes" | "no") => void;
   isSettled?: boolean;
   winningOutcome?: "YES" | "NO" | "NEITHER" | null;
+  /** The market's settlement deadline — used to block new orders/splits after expiry */
+  marketEndDate?: Date;
 }
 
 type OrderType = "market" | "limit" | "merge" | "split";
@@ -49,7 +51,9 @@ export const TradingPanelNew = ({
   onTokenTypeChange,
   isSettled,
   winningOutcome,
+  marketEndDate,
 }: TradingPanelNewProps) => {
+  const isExpired = !isSettled && !!marketEndDate && new Date() >= marketEndDate;
   const [orderType, setOrderType] = useState<OrderType>("market");
   const [action, setAction] = useState<"buy" | "sell">("buy");
   const [tokenType, setTokenType] = useState<"yes" | "no">("yes");
@@ -57,9 +61,9 @@ export const TradingPanelNew = ({
   const [limitPrice, setLimitPrice] = useState<string>("");
   const [splitAmount, setSplitAmount] = useState<string>("");
   const [mergeAmount, setMergeAmount] = useState<string>("");
-  const { usdcBalance } = useTokenBalance(collateralMint);
-  const { usdcBalance: yesBalance } = useTokenBalance(outcomeYesMint);
-  const { usdcBalance: noBalance } = useTokenBalance(outcomeNoMint);
+  const { usdcBalance, refresh: refreshCollateral } = useTokenBalance(collateralMint);
+  const { usdcBalance: yesBalance, refresh: refreshYes } = useTokenBalance(outcomeYesMint);
+  const { usdcBalance: noBalance, refresh: refreshNo } = useTokenBalance(outcomeNoMint);
   const balance = usdcBalance ?? 0;
   const tokenBalance =
     tokenType === "yes" ? (yesBalance ?? 0) : (noBalance ?? 0);
@@ -265,6 +269,7 @@ export const TradingPanelNew = ({
         description: `Burned ${mergeAmountNum.toFixed(2)} YES + ${mergeAmountNum.toFixed(2)} NO → received ${mergeAmountNum.toFixed(2)} USDC — tx: ${String(sig).slice(0, 8)}…`,
       });
       setMergeAmount("");
+      refreshCollateral(); refreshYes(); refreshNo();
     } catch (err) {
       console.error("[TradingPanel] merge error:", err);
       if (isUserRejection(err)) {
@@ -276,6 +281,7 @@ export const TradingPanelNew = ({
         if (outcome.kind === "success") {
           toast.success("Tokens merged!", { description: outcome.signature ? `tx: ${outcome.signature.slice(0, 8)}…` : "Confirmed via indexer" });
           setMergeAmount("");
+          refreshCollateral(); refreshYes(); refreshNo();
         } else if (outcome.kind === "pending") {
           toast.warning("Merge pending", { description: outcome.hint });
         } else if (outcome.kind === "failed") {
@@ -324,17 +330,28 @@ export const TradingPanelNew = ({
         description: `Minted ${splitAmountNum.toFixed(2)} YES + ${splitAmountNum.toFixed(2)} NO shares — tx: ${String(sig).slice(0, 8)}…`,
       });
       setSplitAmount("");
+      // Refresh immediately, then again after 2 s to catch RPC propagation lag
+      await Promise.all([refreshCollateral(), refreshYes(), refreshNo()]);
+      setTimeout(() => { refreshCollateral(); refreshYes(); refreshNo(); }, 2_000);
     } catch (err) {
       console.error("[TradingPanel] split error:", err);
       if (isUserRejection(err)) {
         toast.info("Split cancelled", { description: "You rejected the transaction in your wallet." });
       } else {
         const verifyToastId = toast.loading("Verifying split on-chain…");
-        const outcome = await classifyTxError(err);
-        toast.dismiss(verifyToastId);
+        let outcome;
+        try {
+          outcome = await classifyTxError(err);
+        } catch {
+          outcome = { kind: "failed" as const, reason: "Verification failed — check your wallet or Solana explorer." };
+        } finally {
+          toast.dismiss(verifyToastId);
+        }
         if (outcome.kind === "success") {
-          toast.success("Tokens split!", { description: outcome.signature ? `tx: ${outcome.signature.slice(0, 8)}…` : "Confirmed via indexer" });
+          toast.success("Tokens split!", { description: outcome.signature ? `tx: ${outcome.signature.slice(0, 8)}…` : "Confirmed on-chain" });
           setSplitAmount("");
+          await Promise.all([refreshCollateral(), refreshYes(), refreshNo()]);
+          setTimeout(() => { refreshCollateral(); refreshYes(); refreshNo(); }, 2_000);
         } else if (outcome.kind === "pending") {
           toast.warning("Split pending", { description: outcome.hint });
         } else if (outcome.kind === "failed") {
@@ -858,8 +875,19 @@ export const TradingPanelNew = ({
           );
         })()}
 
-        {/* Split Order Content — disabled when settled */}
+        {/* Split Order Content — disabled when settled or expired */}
         {!isSettled && orderType === "split" && (() => {
+          if (isExpired) return (
+            <div className="flex flex-col items-center gap-3 py-6 text-center">
+              <div className="h-10 w-10 rounded-full bg-amber-500/15 flex items-center justify-center">
+                <Lock className="h-5 w-5 text-amber-400" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-semibold">Market deadline passed</p>
+                <p className="text-xs text-muted-foreground">Splitting is disabled. You can still merge YES+NO pairs back to USDC, or wait for the market creator to resolve and claim your payout.</p>
+              </div>
+            </div>
+          );
           const splitNum = parseFloat(splitAmount) || 0;
           const hasEnough = splitNum > 0 && splitNum <= balance;
 

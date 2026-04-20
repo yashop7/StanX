@@ -5,7 +5,7 @@ const rateMap = new Map<string, { count: number; start: number }>();
 const LIMIT = 60;        // max requests per window
 const WINDOW = 60_000;   // 60 seconds in ms
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const forwarded = req.headers.get('x-forwarded-for');
   const ip = forwarded ? forwarded.split(',')[0].trim() : 'unknown';
   const now = Date.now();

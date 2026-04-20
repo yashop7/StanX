@@ -17,25 +17,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Share2, TrendingUp, Clock, Loader2, AlertCircle, Lock, Trophy, CheckCircle2, XCircle, MinusCircle, Activity, Youtube, ExternalLink } from 'lucide-react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { ArrowLeft, Share2, TrendingUp, Clock, Loader2, AlertCircle, Lock, Trophy, CheckCircle2, XCircle, Activity, Youtube, ExternalLink } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useMarket, useAllMarkets } from '@/hooks/use-markets';
 import { UserStatsCard } from '@/components/UserStatsCard';
 import { buildCloseMarketInstruction, buildClaimRewardsInstruction, buildSetWinnerInstruction } from '@/lib/blockchain/market';
 import { MarketCountdown, MarketCountdownBlocks } from '@/components/MarketCountdown';
-import { fetchMarketTrades, fetchMarketResolution, toDisplayPrice, toDisplayQty } from '@/lib/api/backend';
-import type { BackendTrade, MarketResolution } from '@/lib/api/backend';
+import { fetchMarketTrades, fetchMarketResolution, fetchVideoPreview, toDisplayPrice, toDisplayQty } from '@/lib/api/backend';
+import type { BackendTrade, MarketResolution, VideoPreview } from '@/lib/api/backend';
 import { formatNumber } from '@/app/create-market/metadata';
 
 import { cn } from '@/lib/utils';
@@ -55,6 +44,7 @@ const MarketDetail = () => {
   const [marketTrades, setMarketTrades] = useState<BackendTrade[]>([]);
   const [resolution, setResolution] = useState<MarketResolution | null>(null);
   const [resolutionLoading, setResolutionLoading] = useState(false);
+  const [liveStats, setLiveStats] = useState<VideoPreview | null>(null);
 
   // SWR-cached market data. Deduplicates requests (fixes the double-POST issue in dev
   // where Strict Mode would double-invoke effects), caches for 15s, revalidates on focus.
@@ -98,6 +88,20 @@ const MarketDetail = () => {
     const interval = setInterval(poll, 30_000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [market, marketId]);
+
+  // When oracle has no result but market has a videoId, fetch live YouTube stats
+  // so we can auto-determine the outcome without the creator needing to choose.
+  useEffect(() => {
+    if (!market || market.isSettled || resolution) return;
+    if (new Date() < market.endDate) return;
+    if (!market.videoId) return;
+
+    let cancelled = false;
+    fetchVideoPreview(`https://www.youtube.com/watch?v=${market.videoId}`)
+      .then(stats => { if (!cancelled) setLiveStats(stats); })
+      .catch(() => {/* ignore — manual buttons remain visible */});
+    return () => { cancelled = true; };
+  }, [market, resolution]);
 
   /** Extract a human-readable message from a Solana transaction error. */
   function describeTxError(e: unknown): string {
@@ -272,12 +276,20 @@ const MarketDetail = () => {
                       </Badge>
                       <Badge className={`text-[10px] font-medium px-2 py-0.5 border-0 ${
                         market.isSettled
-                          ? 'bg-gray-500/15 text-gray-400'
+                          ? market.winningOutcome === 'YES'
+                            ? 'bg-success/15 text-success'
+                            : market.winningOutcome === 'NO'
+                              ? 'bg-danger/15 text-danger'
+                              : 'bg-muted/30 text-muted-foreground'
                           : market.status === 'ending-soon'
                             ? 'bg-amber-500/15 text-amber-400'
                             : 'bg-emerald-500/15 text-emerald-500'
                       }`}>
-                        {market.isSettled ? 'Settled' : market.status === 'ending-soon' ? 'Ending Soon' : 'Live'}
+                        {market.isSettled
+                          ? market.winningOutcome === 'YES' ? 'YES Won'
+                          : market.winningOutcome === 'NO'  ? 'NO Won'
+                          : 'Resolved'
+                          : market.status === 'ending-soon' ? 'Ending Soon' : 'Live'}
                       </Badge>
                       <Badge variant="outline" className="text-[10px] font-mono px-2 py-0.5 text-muted-foreground">
                         #{market.marketId}
@@ -313,9 +325,21 @@ const MarketDetail = () => {
                     <TrendingUp className="h-3.5 w-3.5" />
                     <span className="font-medium text-foreground/80">{formatVolume(market.volume)}</span>
                   </span>
-                  <span className="text-xs font-mono text-muted-foreground/60">
-                    YES {(market.yesPrice * 100).toFixed(1)}¢ · NO {(market.noPrice * 100).toFixed(1)}¢
-                  </span>
+                  {market.isSettled ? (
+                    <span className={cn(
+                      'text-xs font-semibold',
+                      market.winningOutcome === 'YES' ? 'text-success' :
+                      market.winningOutcome === 'NO'  ? 'text-danger' : 'text-muted-foreground'
+                    )}>
+                      {market.winningOutcome === 'YES' ? 'YES wins · $1.00 per token'
+                      : market.winningOutcome === 'NO'  ? 'NO wins · $1.00 per token'
+                      : 'Proportional return'}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-mono text-muted-foreground/60">
+                      YES {(market.yesPrice * 100).toFixed(1)}¢ · NO {(market.noPrice * 100).toFixed(1)}¢
+                    </span>
+                  )}
                   {market.videoId && (
                     <a
                       href={market.videoUrl ?? `https://youtube.com/watch?v=${market.videoId}`}
@@ -348,46 +372,34 @@ const MarketDetail = () => {
 
               {/* ── Resolution Banner ──────────────────────────────── */}
               {market.isSettled && (() => {
-                const isYes = market.winningOutcome === 'YES';
-                const isNo  = market.winningOutcome === 'NO';
+                const isYes     = market.winningOutcome === 'YES';
+                const isNo      = market.winningOutcome === 'NO';
                 const isNeither = market.winningOutcome === 'NEITHER';
-                const accentColor = isYes ? 'emerald' : isNo ? 'red' : 'muted';
-
                 return (
                   <div className={cn(
-                    "rounded-xl border bg-card p-5 flex items-center justify-between gap-4",
-                    isYes ? 'border-emerald-500/25' :
-                    isNo  ? 'border-red-500/25' :
-                            'border-border'
+                    'rounded-xl border bg-card p-5 flex items-center justify-between gap-4',
+                    isYes ? 'border-success/25' : isNo ? 'border-danger/25' : 'border-border'
                   )}>
                     <div className="flex items-center gap-3.5">
                       <div className={cn(
-                        "h-9 w-9 rounded-full flex items-center justify-center shrink-0",
-                        isYes ? 'bg-emerald-500/10' :
-                        isNo  ? 'bg-red-500/10' :
-                                'bg-muted/30'
+                        'h-9 w-9 rounded-full flex items-center justify-center shrink-0',
+                        isYes ? 'bg-success/10' : isNo ? 'bg-danger/10' : 'bg-muted/30'
                       )}>
-                        <Trophy className={cn(
-                          "h-4 w-4",
-                          isYes ? 'text-emerald-400' : isNo ? 'text-red-400' : 'text-muted-foreground'
-                        )} />
+                        <Trophy className={cn('h-4 w-4', isYes ? 'text-success' : isNo ? 'text-danger' : 'text-muted-foreground')} />
                       </div>
                       <div>
                         <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-widest mb-0.5">
                           Market Resolved
                         </p>
-                        <p className={cn(
-                          "text-base font-semibold",
-                          isYes ? 'text-emerald-400' : isNo ? 'text-red-400' : 'text-foreground'
-                        )}>
-                          {isNeither ? 'No winner — proportional return' : `${market.winningOutcome} wins · $1.00 per token`}
+                        <p className={cn('text-base font-semibold', isYes ? 'text-success' : isNo ? 'text-danger' : 'text-foreground')}>
+                          {isNeither ? 'No winner, proportional return' : `${market.winningOutcome} wins · $1.00 per token`}
                         </p>
                       </div>
                     </div>
                     <span className={cn(
-                      "text-[10px] font-semibold px-2 py-1 rounded-md border shrink-0",
-                      isYes ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
-                      isNo  ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+                      'text-[10px] font-semibold px-2 py-1 rounded-md border shrink-0',
+                      isYes ? 'bg-success/10 border-success/20 text-success' :
+                      isNo  ? 'bg-danger/10 border-danger/20 text-danger' :
                               'bg-muted/30 border-border text-muted-foreground'
                     )}>
                       Final
@@ -396,206 +408,286 @@ const MarketDetail = () => {
                 );
               })()}
 
+              {/* ── Creator Settle Banner — visible to creator when deadline passed ── */}
+              {userPubkey?.trim() === market.authority?.trim() && !market.isSettled && new Date() >= market.endDate && (() => {
+                const autoOutcome: 'YES' | 'NO' | null = (() => {
+                  if (resolution) return resolution.outcome === 'OutcomeA' ? 'YES' : 'NO';
+                  if (!liveStats || !market.metric || market.target === undefined) return null;
+                  const actual =
+                    market.metric === 'viewCount'    ? liveStats.current_views    :
+                    market.metric === 'likeCount'    ? liveStats.current_likes    :
+                    market.metric === 'commentCount' ? liveStats.current_comments : null;
+                  if (actual === null) return null;
+                  return actual >= market.target ? 'YES' : 'NO';
+                })();
+
+                const actualValue = resolution
+                  ? resolution.actual_value
+                  : market.metric === 'viewCount'    ? liveStats?.current_views
+                  : market.metric === 'likeCount'    ? liveStats?.current_likes
+                  : market.metric === 'commentCount' ? liveStats?.current_comments
+                  : undefined;
+
+                const targetValue = resolution ? resolution.threshold : market.target;
+                const won = autoOutcome === 'YES';
+                const isLoading = resolutionLoading && !autoOutcome;
+
+                return (
+                  <div className={cn(
+                    'rounded-xl border bg-card p-4 flex items-center justify-between gap-4',
+                    autoOutcome
+                      ? won ? 'border-success/25' : 'border-danger/25'
+                      : 'border-border'
+                  )}>
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className={cn(
+                        'h-9 w-9 rounded-full flex items-center justify-center shrink-0',
+                        autoOutcome
+                          ? won ? 'bg-success/10' : 'bg-danger/10'
+                          : 'bg-muted/30'
+                      )}>
+                        {isLoading
+                          ? <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
+                          : autoOutcome
+                            ? won
+                              ? <CheckCircle2 className="h-4 w-4 text-success" />
+                              : <XCircle className="h-4 w-4 text-danger" />
+                            : <Activity className="h-4 w-4 text-muted-foreground" />
+                        }
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-widest mb-0.5">
+                          Ready to Resolve
+                        </p>
+                        {isLoading ? (
+                          <p className="text-sm text-muted-foreground">Fetching result…</p>
+                        ) : autoOutcome ? (
+                          <p className={cn('text-sm font-semibold', won ? 'text-success' : 'text-danger')}>
+                            {won ? 'YES wins' : 'NO wins'}
+                            {actualValue !== undefined && targetValue !== undefined && (
+                              <span className="text-muted-foreground font-normal ml-2 text-xs">
+                                {formatNumber(actualValue)} of {formatNumber(targetValue)} target
+                              </span>
+                            )}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Deadline passed — settle manually</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {autoOutcome ? (
+                      <button
+                        disabled={actionBusy !== null}
+                        onClick={() => handleSetWinner(autoOutcome)}
+                        className={cn(
+                          'shrink-0 px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all',
+                          'disabled:opacity-40 disabled:cursor-not-allowed',
+                          won
+                            ? 'bg-success/15 border border-success/30 text-success hover:bg-success/25'
+                            : 'bg-danger/15 border border-danger/30 text-danger hover:bg-danger/25'
+                        )}
+                      >
+                        {actionBusy === 'set-winner'
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Settling…</>
+                          : <><CheckCircle2 className="h-3.5 w-3.5" /> Settle Market</>
+                        }
+                      </button>
+                    ) : (
+                      <div className="flex gap-2 shrink-0">
+                        {(['YES', 'NO', 'NEITHER'] as const).map(o => (
+                          <button
+                            key={o}
+                            disabled={actionBusy !== null}
+                            onClick={() => handleSetWinner(o)}
+                            className={cn(
+                              'px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-all disabled:opacity-40',
+                              o === 'YES'     ? 'border-success/30 text-success bg-success/10 hover:bg-success/20'
+                              : o === 'NO'   ? 'border-danger/30 text-danger bg-danger/10 hover:bg-danger/20'
+                                             : 'border-border/40 text-muted-foreground bg-muted/20 hover:bg-muted/40'
+                            )}
+                          >
+                            {actionBusy === 'set-winner' ? <Loader2 className="h-3 w-3 animate-spin" /> : o === 'NEITHER' ? 'Neither' : o}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Trading Chart */}
               <TradingChartRecharts marketId={marketId} token={selectedTokenType} volume={market.volume} />
 
-              {/* ── Market Activity — Order Book + Live Trades unified ─── */}
+              {/* ── Market Activity ─────────────────────────────────── */}
               <div className="panel-card overflow-hidden">
-                {/* Panel header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-border/10 dark:border-border/[0.08]">
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Market Activity
+                    {market.isSettled ? 'Trade History' : 'Market Activity'}
                   </h3>
-                  <span className="flex items-center gap-1.5 text-[10px] text-emerald-500/70 font-medium">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Live
-                  </span>
+                  {!market.isSettled && (
+                    <span className="flex items-center gap-1.5 text-[10px] text-emerald-500/70 font-medium">
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Live
+                    </span>
+                  )}
                 </div>
 
-                <Tabs defaultValue="orderbook" className="w-full">
-                  <div className="px-4 pt-3 pb-0">
-                    <TabsList className="h-8 bg-muted/20 dark:bg-muted/[0.08] p-0.5 rounded-lg border border-border/15 dark:border-border/[0.08] gap-0.5">
-                      <TabsTrigger
-                        value="orderbook"
-                        className="h-7 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
-                      >
-                        Order Book
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="trades"
-                        className="h-7 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm"
-                      >
-                        Live Trades
-                        {marketTrades.length > 0 && (
-                          <span className="ml-1.5 text-[9px] px-1.5 py-[1px] rounded-full bg-emerald-500/15 text-emerald-400 font-bold tabular-nums">
-                            {marketTrades.length}
-                          </span>
-                        )}
-                      </TabsTrigger>
-                    </TabsList>
-                  </div>
-
-                  {/* Order Book tab */}
-                  <TabsContent value="orderbook" className="mt-0 p-4 space-y-4">
-                    <OrderBook
-                      marketId={marketIdStr}
-                      yesPrice={market.yesPrice}
-                      noPrice={market.noPrice}
-                      selectedTokenType={selectedTokenType}
-                      userPubkey={userPubkey}
-                    />
-                    <OnChainOrderBook
-                      marketId={marketIdStr}
-                      yesPrice={market.yesPrice}
-                      noPrice={market.noPrice}
-                      selectedTokenType={selectedTokenType}
-                      userPubkey={userPubkey}
-                    />
-                  </TabsContent>
-
-                  {/* Live Trades tab */}
-                  <TabsContent value="trades" className="mt-0">
+                {market.isSettled ? (
+                  /* Settled — no order book, just trade history with a closed notice */
+                  <>
+                    <div className="flex items-center gap-3 px-4 py-3 border-b border-border/[0.06] bg-muted/10">
+                      <Lock className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+                      <p className="text-xs text-muted-foreground/60">
+                        Trading is closed. You can still merge YES and NO token pairs back to USDC.
+                      </p>
+                    </div>
                     {marketTrades.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-16 gap-3">
-                        <div className="h-10 w-10 rounded-full bg-muted/30 flex items-center justify-center">
-                          <Activity className="h-5 w-5 text-muted-foreground/30" />
-                        </div>
-                        <p className="text-sm text-muted-foreground/60">No trades yet</p>
-                        <p className="text-xs text-muted-foreground/35">Trades appear here when the order book matches</p>
+                      <div className="flex flex-col items-center justify-center py-12 gap-2">
+                        <p className="text-sm text-muted-foreground/50">No trades recorded</p>
                       </div>
                     ) : (() => {
                       const maxQty = Math.max(...marketTrades.map(t => t.quantity));
                       return (
                         <>
-                          {/* Column headers */}
                           <div className="grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-2 border-b border-border/[0.08] text-[9px] font-semibold text-muted-foreground/35 uppercase tracking-[0.12em]">
                             <span>Trade</span>
                             <span className="text-right pr-8">Price</span>
                             <span className="text-right w-20 pr-3">Size</span>
                             <span className="text-right w-10">When</span>
                           </div>
-
-                          {/* Trade rows — scrollable */}
-                          <div className="max-h-[30rem] overflow-y-auto scrollbar-thin divide-y divide-border/[0.06]">
+                          <div className="max-h-[24rem] overflow-y-auto scrollbar-thin divide-y divide-border/[0.06]">
                             {marketTrades.map((trade) => {
                               const isBuy = trade.taker_side === 'Buy';
                               const isYes = trade.token_type === 'Yes';
                               const depthPct = (trade.quantity / maxQty) * 48;
                               const price = toDisplayPrice(trade.price);
-                              const qty   = toDisplayQty(trade.quantity);
-                              const sAgo  = Math.floor(Date.now() / 1000 - trade.event_timestamp);
-                              const timeStr = sAgo < 60 ? `${sAgo}s`
-                                : sAgo < 3600 ? `${Math.floor(sAgo / 60)}m`
-                                : sAgo < 86400 ? `${Math.floor(sAgo / 3600)}h`
-                                : `${Math.floor(sAgo / 86400)}d`;
-
+                              const qty = toDisplayQty(trade.quantity);
+                              const sAgo = Math.floor(Date.now() / 1000 - trade.event_timestamp);
+                              const timeStr = sAgo < 60 ? `${sAgo}s` : sAgo < 3600 ? `${Math.floor(sAgo/60)}m` : sAgo < 86400 ? `${Math.floor(sAgo/3600)}h` : `${Math.floor(sAgo/86400)}d`;
                               return (
-                                <div
-                                  key={trade.id}
-                                  className="relative grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-[9px] hover:bg-muted/[0.03] transition-colors group"
-                                >
-                                  {/* Depth fill — washes in from right */}
-                                  <div
-                                    className={cn(
-                                      'absolute right-0 inset-y-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity',
-                                      isBuy ? 'bg-emerald-500/[0.06]' : 'bg-red-500/[0.06]',
-                                    )}
-                                    style={{ width: `${depthPct}%` }}
-                                  />
-                                  {/* Always-on subtle depth indicator */}
-                                  <div
-                                    className={cn(
-                                      'absolute right-0 inset-y-0 pointer-events-none',
-                                      isBuy ? 'bg-emerald-500/[0.04]' : 'bg-red-500/[0.04]',
-                                    )}
-                                    style={{ width: `${depthPct * 0.6}%` }}
-                                  />
-
-                                  {/* Left accent bar */}
-                                  <div
-                                    className={cn(
-                                      'absolute left-0 top-[18%] bottom-[18%] w-[2px] rounded-r-full',
-                                      isBuy ? 'bg-emerald-500/50' : 'bg-red-500/50',
-                                    )}
-                                  />
-
-                                  {/* Trade descriptor */}
-                                  <div className="flex items-center gap-2 z-10 min-w-0">
-                                    <span
-                                      className={cn(
-                                        'text-[11px] font-bold leading-none shrink-0',
-                                        isBuy ? 'text-emerald-400' : 'text-red-400',
-                                      )}
-                                    >
-                                      {isBuy ? 'BUY' : 'SELL'}
-                                    </span>
-                                    <span
-                                      className={cn(
-                                        'text-[9px] font-semibold px-1.5 py-[2px] rounded-sm leading-none shrink-0',
-                                        isYes
-                                          ? 'bg-emerald-500/12 text-emerald-400/80'
-                                          : 'bg-red-500/12 text-red-400/80',
-                                      )}
-                                    >
-                                      {trade.token_type.toUpperCase()}
-                                    </span>
+                                <div key={trade.id} className="relative grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-[9px] hover:bg-muted/[0.03] transition-colors group">
+                                  <div className={cn('absolute right-0 inset-y-0 pointer-events-none', isBuy ? 'bg-emerald-500/[0.04]' : 'bg-red-500/[0.04]')} style={{ width: `${depthPct * 0.6}%` }} />
+                                  <div className={cn('absolute left-0 top-[18%] bottom-[18%] w-[2px] rounded-r-full', isBuy ? 'bg-emerald-500/50' : 'bg-red-500/50')} />
+                                  <div className="flex items-center gap-2 z-10">
+                                    <span className={cn('text-[11px] font-bold leading-none', isBuy ? 'text-emerald-400' : 'text-red-400')}>{isBuy ? 'BUY' : 'SELL'}</span>
+                                    <span className={cn('text-[9px] font-semibold px-1.5 py-[2px] rounded-sm', isYes ? 'bg-emerald-500/12 text-emerald-400/80' : 'bg-red-500/12 text-red-400/80')}>{trade.token_type.toUpperCase()}</span>
                                   </div>
-
-                                  {/* Price */}
                                   <div className="text-right pr-8 z-10">
-                                    <span
-                                      className={cn(
-                                        'font-mono font-semibold text-[13px] tabular-nums',
-                                        isBuy ? 'text-emerald-400' : 'text-red-400',
-                                      )}
-                                    >
-                                      {price.toFixed(1)}
-                                      <span className="text-[10px] font-normal opacity-50">¢</span>
-                                    </span>
+                                    <span className={cn('font-mono font-semibold text-[13px] tabular-nums', isBuy ? 'text-emerald-400' : 'text-red-400')}>{price.toFixed(1)}<span className="text-[10px] font-normal opacity-50">¢</span></span>
                                   </div>
-
-                                  {/* Quantity */}
                                   <div className="text-right w-20 pr-3 z-10">
-                                    <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">
-                                      {qty >= 1000 ? `${(qty / 1000).toFixed(1)}K` : qty.toFixed(qty < 10 ? 2 : 0)}
-                                    </span>
+                                    <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">{qty >= 1000 ? `${(qty/1000).toFixed(1)}K` : qty.toFixed(qty < 10 ? 2 : 0)}</span>
                                   </div>
-
-                                  {/* Time */}
                                   <div className="text-right w-10 z-10">
-                                    <span className="font-mono text-[10px] text-muted-foreground/30 tabular-nums">
-                                      {timeStr}
-                                    </span>
+                                    <span className="font-mono text-[10px] text-muted-foreground/30 tabular-nums">{timeStr}</span>
                                   </div>
                                 </div>
                               );
                             })}
                           </div>
-
-                          {/* Footer bar */}
-                          <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/[0.08]">
-                            <span className="text-[10px] text-muted-foreground/35 tabular-nums">
-                              {marketTrades.length} executions
-                            </span>
-                            <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground/35">
-                              <span className="inline-block h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
-                              refreshes every 15s
-                            </span>
+                          <div className="px-4 py-2.5 border-t border-border/[0.08]">
+                            <span className="text-[10px] text-muted-foreground/35 tabular-nums">{marketTrades.length} executions</span>
                           </div>
                         </>
                       );
                     })()}
-                  </TabsContent>
-                </Tabs>
+                  </>
+                ) : (
+                  /* Live — full order book + live trades tabs */
+                  <Tabs defaultValue="orderbook" className="w-full">
+                    <div className="px-4 pt-3 pb-0">
+                      <TabsList className="h-8 bg-muted/20 dark:bg-muted/[0.08] p-0.5 rounded-lg border border-border/15 dark:border-border/[0.08] gap-0.5">
+                        <TabsTrigger value="orderbook" className="h-7 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">Order Book</TabsTrigger>
+                        <TabsTrigger value="trades" className="h-7 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                          Live Trades
+                          {marketTrades.length > 0 && (
+                            <span className="ml-1.5 text-[9px] px-1.5 py-[1px] rounded-full bg-emerald-500/15 text-emerald-400 font-bold tabular-nums">{marketTrades.length}</span>
+                          )}
+                        </TabsTrigger>
+                      </TabsList>
+                    </div>
+                    <TabsContent value="orderbook" className="mt-0 p-4 space-y-4">
+                      <OrderBook marketId={marketIdStr} yesPrice={market.yesPrice} noPrice={market.noPrice} selectedTokenType={selectedTokenType} userPubkey={userPubkey} />
+                      <div className="flex items-center gap-3 pt-2">
+                        <div className="flex-1 h-px bg-violet-500/15" />
+                        <span className="text-[9px] font-semibold uppercase tracking-widest text-violet-400/50 whitespace-nowrap">On-Chain (Debug)</span>
+                        <div className="flex-1 h-px bg-violet-500/15" />
+                      </div>
+                      <OnChainOrderBook marketId={marketIdStr} yesPrice={market.yesPrice} noPrice={market.noPrice} selectedTokenType={selectedTokenType} userPubkey={userPubkey} />
+                    </TabsContent>
+                    <TabsContent value="trades" className="mt-0">
+                      {marketTrades.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 gap-3">
+                          <div className="h-10 w-10 rounded-full bg-muted/30 flex items-center justify-center">
+                            <Activity className="h-5 w-5 text-muted-foreground/30" />
+                          </div>
+                          <p className="text-sm text-muted-foreground/60">No trades yet</p>
+                          <p className="text-xs text-muted-foreground/35">Trades appear here when the order book matches</p>
+                        </div>
+                      ) : (() => {
+                        const maxQty = Math.max(...marketTrades.map(t => t.quantity));
+                        return (
+                          <>
+                            <div className="grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-2 border-b border-border/[0.08] text-[9px] font-semibold text-muted-foreground/35 uppercase tracking-[0.12em]">
+                              <span>Trade</span>
+                              <span className="text-right pr-8">Price</span>
+                              <span className="text-right w-20 pr-3">Size</span>
+                              <span className="text-right w-10">When</span>
+                            </div>
+                            <div className="max-h-[30rem] overflow-y-auto scrollbar-thin divide-y divide-border/[0.06]">
+                              {marketTrades.map((trade) => {
+                                const isBuy = trade.taker_side === 'Buy';
+                                const isYes = trade.token_type === 'Yes';
+                                const depthPct = (trade.quantity / maxQty) * 48;
+                                const price = toDisplayPrice(trade.price);
+                                const qty = toDisplayQty(trade.quantity);
+                                const sAgo = Math.floor(Date.now() / 1000 - trade.event_timestamp);
+                                const timeStr = sAgo < 60 ? `${sAgo}s` : sAgo < 3600 ? `${Math.floor(sAgo/60)}m` : sAgo < 86400 ? `${Math.floor(sAgo/3600)}h` : `${Math.floor(sAgo/86400)}d`;
+                                return (
+                                  <div key={trade.id} className="relative grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-[9px] hover:bg-muted/[0.03] transition-colors group">
+                                    <div className={cn('absolute right-0 inset-y-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity', isBuy ? 'bg-emerald-500/[0.06]' : 'bg-red-500/[0.06]')} style={{ width: `${depthPct}%` }} />
+                                    <div className={cn('absolute right-0 inset-y-0 pointer-events-none', isBuy ? 'bg-emerald-500/[0.04]' : 'bg-red-500/[0.04]')} style={{ width: `${depthPct * 0.6}%` }} />
+                                    <div className={cn('absolute left-0 top-[18%] bottom-[18%] w-[2px] rounded-r-full', isBuy ? 'bg-emerald-500/50' : 'bg-red-500/50')} />
+                                    <div className="flex items-center gap-2 z-10 min-w-0">
+                                      <span className={cn('text-[11px] font-bold leading-none shrink-0', isBuy ? 'text-emerald-400' : 'text-red-400')}>{isBuy ? 'BUY' : 'SELL'}</span>
+                                      <span className={cn('text-[9px] font-semibold px-1.5 py-[2px] rounded-sm leading-none shrink-0', isYes ? 'bg-emerald-500/12 text-emerald-400/80' : 'bg-red-500/12 text-red-400/80')}>{trade.token_type.toUpperCase()}</span>
+                                    </div>
+                                    <div className="text-right pr-8 z-10">
+                                      <span className={cn('font-mono font-semibold text-[13px] tabular-nums', isBuy ? 'text-emerald-400' : 'text-red-400')}>{price.toFixed(1)}<span className="text-[10px] font-normal opacity-50">¢</span></span>
+                                    </div>
+                                    <div className="text-right w-20 pr-3 z-10">
+                                      <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">{qty >= 1000 ? `${(qty/1000).toFixed(1)}K` : qty.toFixed(qty < 10 ? 2 : 0)}</span>
+                                    </div>
+                                    <div className="text-right w-10 z-10">
+                                      <span className="font-mono text-[10px] text-muted-foreground/30 tabular-nums">{timeStr}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/[0.08]">
+                              <span className="text-[10px] text-muted-foreground/35 tabular-nums">{marketTrades.length} executions</span>
+                              <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground/35">
+                                <span className="inline-block h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
+                                refreshes every 15s
+                              </span>
+                            </div>
+                          </>
+                        );
+                      })()}
+                    </TabsContent>
+                  </Tabs>
+                )}
               </div>
 
               {/* ── Info — About + My Orders ────────────────────────────── */}
               <Tabs defaultValue="about" className="w-full">
-                <TabsList className="w-full justify-start h-10 bg-muted/20 dark:bg-muted/10 p-1 rounded-xl border border-border/20 dark:border-border/10">
-                  <TabsTrigger value="about" className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <TabsList className="h-8 bg-muted/20 dark:bg-muted/8 p-0.5 rounded-lg border border-border/15 dark:border-border/8 gap-0.5">
+                  <TabsTrigger value="about" className="h-7 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">
                     About
                   </TabsTrigger>
-                  <TabsTrigger value="my-orders" className="text-xs rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <TabsTrigger value="my-orders" className="h-7 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">
                     My Orders
                   </TabsTrigger>
                 </TabsList>
@@ -654,6 +746,7 @@ const MarketDetail = () => {
                   onTokenTypeChange={setSelectedTokenType}
                   isSettled={market.isSettled}
                   winningOutcome={market.winningOutcome}
+                  marketEndDate={market.endDate}
                 />
 
                 {/* User Position Stats */}
@@ -665,205 +758,28 @@ const MarketDetail = () => {
                   winningOutcome={market.winningOutcome}
                 />
 
-                {/* ── Creator Actions Panel ───────────────────────────── */}
-                {userPubkey === market.authority && (
-                  <div className="panel-card p-5 space-y-4">
-                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                {/* ── Creator Actions Panel — Close Market only ───────── */}
+                {userPubkey?.trim() === market.authority?.trim() && market.isSettled && (
+                  <div className="panel-card p-5 space-y-3">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Creator Actions
                     </h4>
-
-                    {/* Resolve Market — only if not settled yet */}
-                    {!market.isSettled ? (() => {
-                      const deadlinePassed = new Date() >= market.endDate;
-                      return (
-                        <div className="space-y-3">
-                          {!deadlinePassed ? (
-                            <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                              <Clock className="h-3.5 w-3.5 text-amber-400 mt-0.5 shrink-0" />
-                              <p className="text-[11px] text-amber-400 leading-snug">
-                                Settlement deadline not reached yet. You can resolve{' '}
-                                <span className="font-semibold">{formatDistanceToNow(market.endDate, { addSuffix: true })}</span>.
-                              </p>
-                            </div>
-                          ) : resolution ? (
-                            /* Oracle has computed the result — show it and let creator confirm */
-                            <div className="space-y-3">
-                              <div className={cn(
-                                'p-3 rounded-lg border',
-                                resolution.outcome === 'OutcomeA'
-                                  ? 'bg-emerald-500/10 border-emerald-500/30'
-                                  : 'bg-red-500/10 border-red-500/30',
-                              )}>
-                                <div className="flex items-center gap-2 mb-2">
-                                  {resolution.outcome === 'OutcomeA'
-                                    ? <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                                    : <XCircle className="h-4 w-4 text-red-400" />
-                                  }
-                                  <span className={cn(
-                                    'text-sm font-semibold',
-                                    resolution.outcome === 'OutcomeA' ? 'text-emerald-400' : 'text-red-400',
-                                  )}>
-                                    {resolution.outcome === 'OutcomeA' ? 'YES wins' : 'NO wins'} — Target {resolution.outcome === 'OutcomeA' ? 'met' : 'not met'}
-                                  </span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                  <div className="p-2 rounded-md bg-background/40">
-                                    <p className="text-muted-foreground/60 text-[10px] uppercase tracking-wider mb-0.5">Actual</p>
-                                    <p className="font-bold tabular-nums">{formatNumber(resolution.actual_value)}</p>
-                                  </div>
-                                  <div className="p-2 rounded-md bg-background/40">
-                                    <p className="text-muted-foreground/60 text-[10px] uppercase tracking-wider mb-0.5">Target</p>
-                                    <p className="font-bold tabular-nums">{formatNumber(resolution.threshold)}</p>
-                                  </div>
-                                </div>
-                              </div>
-                              <p className="text-[11px] text-muted-foreground">
-                                Confirm the outcome below to settle the market on-chain. This is irreversible.
-                              </p>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button
-                                    variant={resolution.outcome === 'OutcomeA' ? 'success' : 'destructive'}
-                                    size="sm"
-                                    disabled={actionBusy !== null}
-                                    className="w-full gap-2 font-semibold"
-                                  >
-                                    {resolution.outcome === 'OutcomeA'
-                                      ? <><CheckCircle2 className="h-4 w-4" /> Settle as YES Wins</>
-                                      : <><XCircle className="h-4 w-4" /> Settle as NO Wins</>
-                                    }
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>
-                                      Settle market as &quot;{resolution.outcome === 'OutcomeA' ? 'YES' : 'NO'} wins&quot;?
-                                    </AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      The oracle reports {formatNumber(resolution.actual_value)} {resolution.metric} (target: {formatNumber(resolution.threshold)}).
-                                      This will settle the market on-chain and allow winners to claim rewards. This action cannot be undone.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => handleSetWinner(resolution.outcome === 'OutcomeA' ? 'YES' : 'NO')}
-                                      className={resolution.outcome === 'OutcomeA' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-red-600 hover:bg-red-500'}
-                                    >
-                                      {actionBusy === 'set-winner'
-                                        ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Settling...</>
-                                        : `Confirm — ${resolution.outcome === 'OutcomeA' ? 'YES' : 'NO'} Wins`
-                                      }
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </div>
-                          ) : resolutionLoading ? (
-                            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
-                              <p className="text-[11px] text-muted-foreground leading-snug">
-                                Fetching resolution data from oracle...
-                              </p>
-                            </div>
-                          ) : (
-                            /* Deadline passed but oracle hasn't computed yet — show manual fallback */
-                            <div className="space-y-3">
-                              <div className="flex items-start gap-2 p-2.5 rounded-lg bg-muted/20 border border-border/30">
-                                <Activity className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
-                                <p className="text-[11px] text-muted-foreground leading-snug">
-                                  Oracle resolution pending. You can settle manually or wait for automatic resolution.
-                                </p>
-                              </div>
-                              <p className="text-[11px] text-muted-foreground">
-                                Select the outcome to resolve this market. This action is irreversible.
-                              </p>
-                              <div className="grid grid-cols-3 gap-2">
-                                {(['YES', 'NO', 'NEITHER'] as const).map((outcome) => {
-                                  const Icon = outcome === 'YES' ? CheckCircle2 : outcome === 'NO' ? XCircle : MinusCircle;
-                                  const label = outcome === 'NEITHER' ? 'Neither' : outcome;
-                                  const colorClass =
-                                    outcome === 'YES' ? 'border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500/60' :
-                                    outcome === 'NO'  ? 'border-red-500/40 text-red-400 hover:bg-red-500/10 hover:border-red-500/60' :
-                                                        'border-border/40 text-muted-foreground hover:bg-muted/20';
-                                  return (
-                                    <AlertDialog key={outcome}>
-                                      <AlertDialogTrigger asChild>
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          disabled={actionBusy !== null}
-                                          className={`gap-1.5 text-xs font-semibold ${colorClass}`}
-                                        >
-                                          <Icon className="h-3.5 w-3.5" />
-                                          {label}
-                                        </Button>
-                                      </AlertDialogTrigger>
-                                      <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                          <AlertDialogTitle>Resolve market as &quot;{label} wins&quot;?</AlertDialogTitle>
-                                          <AlertDialogDescription>
-                                            This will settle the market on-chain and allow winners to claim rewards.
-                                            This action cannot be undone.
-                                          </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                          <AlertDialogAction
-                                            onClick={() => handleSetWinner(outcome)}
-                                            className={outcome === 'YES' ? 'bg-emerald-600 hover:bg-emerald-500' : outcome === 'NO' ? 'bg-red-600 hover:bg-red-500' : ''}
-                                          >
-                                            {actionBusy === 'set-winner'
-                                              ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Setting...</>
-                                              : `Confirm — ${label} Wins`
-                                            }
-                                          </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                    </AlertDialog>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })() : (
-                      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/20 border border-border/30">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                        <span className="text-xs text-muted-foreground">
-                          Market resolved —{' '}
-                          <span className="font-semibold text-foreground">
-                            {market.winningOutcome === 'YES' ? 'YES wins' : market.winningOutcome === 'NO' ? 'NO wins' : 'Neither wins'}
-                          </span>
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Close Market — only show after settlement */}
-                    {market.isSettled && (
-                      <>
-                        <div className="border-t border-border/20" />
-                        <div className="space-y-1.5">
-                          <p className="text-[11px] text-muted-foreground">
-                            Permanently closes the market account and reclaims rent. Requires all orders cancelled and all rewards claimed.
-                          </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full gap-2 border-border/40 text-muted-foreground hover:text-foreground"
-                            disabled={actionBusy !== null}
-                            onClick={handleCloseMarket}
-                          >
-                            {actionBusy === 'close'
-                              ? <Loader2 className="h-4 w-4 animate-spin" />
-                              : <Lock className="h-4 w-4" />
-                            }
-                            {actionBusy === 'close' ? 'Closing...' : 'Close Market'}
-                          </Button>
-                        </div>
-                      </>
-                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      Permanently closes the market account and reclaims rent. Requires all orders cancelled and all rewards claimed.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full gap-2 border-border/40 text-muted-foreground hover:text-foreground"
+                      disabled={actionBusy !== null}
+                      onClick={handleCloseMarket}
+                    >
+                      {actionBusy === 'close'
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <Lock className="h-4 w-4" />
+                      }
+                      {actionBusy === 'close' ? 'Closing...' : 'Close Market'}
+                    </Button>
                   </div>
                 )}
 
@@ -877,7 +793,7 @@ const MarketDetail = () => {
                       </span>
                     </div>
                     <Button
-                      className="w-full gap-2 bg-success hover:brightness-110 text-white shadow-sm shadow-success/20"
+                      className="w-full gap-2 bg-emerald-500 text-white shadow-sm shadow-emerald-500/20 hover:bg-emerald-400"
                       disabled={actionBusy !== null}
                       onClick={handleClaimRewards}
                     >

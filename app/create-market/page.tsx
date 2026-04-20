@@ -31,9 +31,23 @@ import { USDC_MINT, SOLANA_NETWORK } from '@/lib/constants';
 import { getInitializeMarketInstructionAsync } from '@/generated/instructions/initializeMarket';
 import { fetchIndexerHealth } from '@/lib/api/backend';
 import { getAllMarkets } from '@/lib/blockchain/market';
+import { classifyTxError, isUserRejection } from '@/lib/blockchain/verify-tx';
 import type { VideoPreview } from '@/lib/api/backend';
 import { uploadMetadataAction, previewVideoAction } from './actions';
 import { buildVideoMarketMetadata, formatNumber, METRIC_LABELS, type VideoMetric } from './metadata';
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+async function pollForMarket(marketId: number): Promise<boolean> {
+  for (let i = 0; i < 8; i++) {
+    await new Promise(r => setTimeout(r, 2_000));
+    try {
+      const res = await fetch(`/api/markets/${marketId}`);
+      if (res.ok) return true;
+    } catch { /* ignore, retry */ }
+  }
+  return false;
+}
 
 // ── YouTube URL detection────────
 
@@ -195,6 +209,7 @@ export default function CreateMarket() {
       return;
     }
 
+    let marketId: number | null = null;
     try {
       // Build metadata
       setPipe(p => ({ ...p, step: 'uploading-metadata' }));
@@ -213,7 +228,7 @@ export default function CreateMarket() {
 
       // Get next market ID from chain (not indexer, which may lag)
       const onChainMarkets = await getAllMarkets();
-      const marketId = onChainMarkets.length === 0 ? 1 : Math.max(...onChainMarkets.map(m => m.data.marketId)) + 1;
+      marketId = onChainMarkets.length === 0 ? 1 : Math.max(...onChainMarkets.map(m => m.data.marketId)) + 1;
       setPipe(p => ({ ...p, step: 'initializing-market', metadataUrl, marketId }));
 
       // Initialize on-chain
@@ -231,7 +246,15 @@ export default function CreateMarket() {
       setPipe(p => ({ ...p, step: 'done', txSignature: signature }));
       toast.success(`Market #${marketId} is live!`);
     } catch (err: unknown) {
-      // Log transactionPlanResult for on-chain error details
+      console.error('[create-market] error:', err);
+
+      if (isUserRejection(err)) {
+        setPipe(p => ({ ...p, step: 'idle' }));
+        toast.info('Transaction cancelled');
+        return;
+      }
+
+      // Real on-chain program errors detected during simulation
       if (err && typeof err === 'object' && 'transactionPlanResult' in err) {
         console.error('[create-market] transactionPlanResult:', (err as any).transactionPlanResult);
         const results: any[] = (err as any).transactionPlanResult ?? [];
@@ -248,10 +271,61 @@ export default function CreateMarket() {
           }
         }
       }
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[create-market] error:', err);
-      setPipe(p => ({ ...p, step: 'error', error: msg }));
-      toast.error('Failed to create market', { description: msg });
+
+      // For timeouts and RPC errors: verify before declaring failure
+      const verifyToastId = toast.loading('Verifying market creation on-chain…');
+      const safetyTimer = setTimeout(() => toast.dismiss(verifyToastId), 25_000);
+
+      try {
+        // No backend context for market creation — classifyTxError uses on-chain RPC sig check
+        const outcome = await classifyTxError(err);
+        clearTimeout(safetyTimer);
+        toast.dismiss(verifyToastId);
+
+        if (outcome.kind === 'success') {
+          setPipe(p => ({ ...p, step: 'done', txSignature: outcome.signature ?? null }));
+          toast.success(`Market #${marketId ?? '?'} is live!`);
+          return;
+        }
+
+        if (outcome.kind === 'pending') {
+          if (marketId !== null) {
+            // RPC couldn't confirm — poll GET /api/markets/:id until indexed or timeout
+            const checkToastId = toast.loading('Checking if market was registered on-chain…');
+            let found = false;
+            try {
+              found = await pollForMarket(marketId);
+            } finally {
+              toast.dismiss(checkToastId);
+            }
+            if (found) {
+              setPipe(p => ({ ...p, step: 'done' }));
+              toast.success(`Market #${marketId} is live!`);
+              return;
+            }
+          }
+          setPipe(p => ({ ...p, step: 'error', error: outcome.hint }));
+          toast.warning('Market status unknown', { description: outcome.hint });
+          return;
+        }
+
+        if (outcome.kind === 'cancelled') {
+          setPipe(p => ({ ...p, step: 'idle' }));
+          toast.info('Transaction cancelled');
+          return;
+        }
+
+        // outcome.kind === 'failed'
+        setPipe(p => ({ ...p, step: 'error', error: outcome.reason }));
+        toast.error('Failed to create market', { description: outcome.reason });
+      } catch (verifyErr) {
+        clearTimeout(safetyTimer);
+        toast.dismiss(verifyToastId);
+        console.error('[create-market] verification error:', verifyErr);
+        toast.warning('Market status unknown', {
+          description: 'Could not verify — check your wallet and Solana explorer.',
+        });
+      }
     }
   };
 
