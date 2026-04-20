@@ -198,7 +198,7 @@ export const TradingPanelNew = ({
       try {
         const outcome = await classifyTxError(err, {
           marketId: numericMarketId,
-          userPubkey: userPubkey ?? "",
+          userPubkey: session?.account?.address ?? "",
           orderStartTime, // correctly captured before send() above
         });
         clearTimeout(safetyTimer);
@@ -212,8 +212,10 @@ export const TradingPanelNew = ({
           setLimitPrice("");
         } else if (outcome.kind === "pending") {
           toast.warning("Transaction pending", { description: outcome.hint });
-        } else {
+        } else if (outcome.kind === "failed") {
           toast.error("Order failed", { description: outcome.reason });
+        } else {
+          toast.info("Transaction cancelled");
         }
       } catch (verifyErr) {
         clearTimeout(safetyTimer);
@@ -276,8 +278,10 @@ export const TradingPanelNew = ({
           setMergeAmount("");
         } else if (outcome.kind === "pending") {
           toast.warning("Merge pending", { description: outcome.hint });
-        } else {
+        } else if (outcome.kind === "failed") {
           toast.error("Merge failed", { description: outcome.reason });
+        } else {
+          toast.info("Merge cancelled");
         }
       }
     } finally {
@@ -333,8 +337,10 @@ export const TradingPanelNew = ({
           setSplitAmount("");
         } else if (outcome.kind === "pending") {
           toast.warning("Split pending", { description: outcome.hint });
-        } else {
+        } else if (outcome.kind === "failed") {
           toast.error("Split failed", { description: outcome.reason });
+        } else {
+          toast.info("Split cancelled");
         }
       }
     } finally {
