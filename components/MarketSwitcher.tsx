@@ -22,7 +22,7 @@ export const MarketSwitcher = ({ markets, currentMarketId }: MarketSwitcherProps
   };
 
   const quickAccessMarkets = markets
-    .filter(m => m.marketId.toString() !== currentMarketId)
+    .filter(m => m.marketId.toString() !== currentMarketId && m.status !== 'resolved')
     .slice(0, 6);
 
   return (
