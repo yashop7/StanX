@@ -582,6 +582,7 @@ export const TradingPanelNew = ({
                   placeholder="50"
                   value={limitPrice}
                   onChange={(e) => setLimitPrice(e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="h-10 bg-muted/30 border-border rounded-lg font-mono text-sm"
                 />
               </div>
@@ -624,6 +625,7 @@ export const TradingPanelNew = ({
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
                   className={cn(
                     "h-11 bg-muted/30 border-border rounded-lg font-mono text-sm",
                     !isLimit && action === "buy" ? "pl-7" : "pl-3.5"
@@ -807,6 +809,7 @@ export const TradingPanelNew = ({
                   placeholder="0.00"
                   value={mergeAmount}
                   onChange={(e) => setMergeAmount(e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
                   className="h-11 bg-muted/30 border-border rounded-lg font-mono text-sm"
                 />
                 <div className="grid grid-cols-4 gap-1.5">
@@ -926,6 +929,7 @@ export const TradingPanelNew = ({
                     placeholder="0.00"
                     value={splitAmount}
                     onChange={(e) => setSplitAmount(e.target.value)}
+                    onWheel={(e) => e.currentTarget.blur()}
                     className="pl-7 h-11 bg-muted/30 border-border rounded-lg font-mono text-sm"
                   />
                 </div>
