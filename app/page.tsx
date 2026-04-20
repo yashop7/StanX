@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSpring, useMotionValueEvent } from "motion/react";
 import Link from "next/link";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
@@ -886,22 +887,16 @@ const CLOB_CHART_CFG = {
 
 function DepthChart() {
   const chartRef = useRef<HTMLDivElement>(null);
-  const [isHovering, setIsHovering] = useState(false);
-  const [axisX, setAxisX] = useState(9999);
-  const [displayVal, setDisplayVal] = useState(
-    CLOB_DATA[CLOB_DATA.length - 1].yes
-  );
+  const [axis, setAxis] = useState(0);
 
-  const chartW = chartRef.current?.getBoundingClientRect().width ?? 560;
-  // clipRight=0 when axisX>=chartW → nothing clipped → full bright area visible
-  const clipRight = Math.max(0, chartW - axisX);
+  const springX = useSpring(0, { damping: 30, stiffness: 100 });
+  const springY = useSpring(CLOB_DATA[CLOB_DATA.length - 1].yes, { damping: 30, stiffness: 100 });
+
+  useMotionValueEvent(springX, "change", (latest) => setAxis(latest));
 
   return (
-    <div className="relative w-full" ref={chartRef}>
-      <ChartContainer
-        config={CLOB_CHART_CFG}
-        className="h-[180px] w-full md:h-[210px]"
-      >
+    <div className="relative w-full">
+      <ChartContainer ref={chartRef} config={CLOB_CHART_CFG} className="h-[180px] w-full md:h-[210px]">
         <AreaChart
           data={CLOB_DATA}
           margin={{ top: 28, right: 0, left: 0, bottom: 0 }}
@@ -910,15 +905,13 @@ function DepthChart() {
             const x = state.activeCoordinate?.x;
             const val = state.activePayload?.[0]?.value as number | undefined;
             if (x != null && val != null) {
-              setIsHovering(true);
-              setAxisX(x);
-              setDisplayVal(Math.round(val * 10) / 10);
+              springX.set(x);
+              springY.set(val);
             }
           }}
           onMouseLeave={() => {
-            setIsHovering(false);
-            setAxisX(9999);
-            setDisplayVal(CLOB_DATA[CLOB_DATA.length - 1].yes);
+            springX.set(chartRef.current?.getBoundingClientRect().width ?? 0);
+            springY.jump(CLOB_DATA[CLOB_DATA.length - 1].yes);
           }}
         >
           <defs>
@@ -928,20 +921,12 @@ function DepthChart() {
             </linearGradient>
           </defs>
 
-          <CartesianGrid
-            vertical={false}
-            stroke="rgba(255,255,255,0.04)"
-            strokeDasharray="3 4"
-          />
+          <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.04)" strokeDasharray="3 4" />
           <XAxis
             dataKey="month"
             tickLine={false}
             axisLine={false}
-            tick={{
-              fill: "rgba(255,255,255,0.3)",
-              fontSize: 10,
-              fontFamily: "monospace",
-            }}
+            tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10, fontFamily: "monospace" }}
             tickMargin={8}
           />
           <YAxis hide domain={["auto", "auto"]} />
@@ -956,10 +941,10 @@ function DepthChart() {
             fillOpacity={1}
             dot={false}
             activeDot={false}
-            clipPath={`inset(0 ${clipRight}px 0 0)`}
+            clipPath={`inset(0 ${(chartRef.current?.getBoundingClientRect().width ?? 0) - axis}px 0 0)`}
           />
 
-          {/* Ghost (full range) — dim line, no fill */}
+          {/* Ghost — dim line, no fill */}
           <Area
             dataKey="yes"
             type="monotone"
@@ -971,45 +956,18 @@ function DepthChart() {
             activeDot={false}
           />
 
-          {/* Dashed vertical cursor line — only while hovering */}
-          {isHovering && (
-            <line
-              x1={axisX}
-              y1={0}
-              x2={axisX}
-              y2="88%"
-              stroke={ACCENT}
-              strokeDasharray="3 3"
-              strokeWidth={1}
-              strokeOpacity={0.3}
-              strokeLinecap="round"
-            />
-          )}
+          {/* Dashed cursor line */}
+          <line
+            x1={axis} y1={0} x2={axis} y2="88%"
+            stroke={ACCENT} strokeDasharray="3 3" strokeWidth={1}
+            strokeOpacity={0.3} strokeLinecap="round"
+          />
 
-          {/* Floating label pill — only while hovering */}
-          {isHovering && (
-            <>
-              <rect
-                x={axisX - 30}
-                y={2}
-                width={60}
-                height={20}
-                rx={4}
-                fill={ACCENT}
-              />
-              <text
-                x={axisX}
-                y={16}
-                textAnchor="middle"
-                fill="#000"
-                fontSize={11}
-                fontWeight={700}
-                fontFamily="monospace"
-              >
-                {displayVal.toFixed(1)}¢
-              </text>
-            </>
-          )}
+          {/* Floating pill */}
+          <rect x={axis - 30} y={2} width={60} height={20} rx={4} fill={ACCENT} />
+          <text x={axis} y={16} textAnchor="middle" fill="#000" fontSize={11} fontWeight={700} fontFamily="monospace">
+            {springY.get().toFixed(1)}¢
+          </text>
         </AreaChart>
       </ChartContainer>
     </div>

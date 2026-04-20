@@ -33,7 +33,8 @@
       "Bash(echo \"EXIT: $?\")",
       "Bash(gtimeout 45 ./node_modules/.bin/tsc --noEmit --skipLibCheck)",
       "Bash(./node_modules/.bin/tsc --noEmit --skipLibCheck)",
-      "Bash(lsof -ti:3000,3001,3002)"
+      "Bash(lsof -ti:3000,3001,3002)",
+      "Bash(~/.bun/bin/bun add *)"
     ]
   }
 }
