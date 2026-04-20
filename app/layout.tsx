@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Stanx (Prediction Market on Solana)",
+  title: "StanX (Prediction Market on Solana)",
   description: "Trade YES/NO on real-world events using a transparent Central Limit Order Book on Solana.",
   icons: {
     icon: "/icon.svg",
