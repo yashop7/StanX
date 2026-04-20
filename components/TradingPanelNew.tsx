@@ -21,7 +21,8 @@ import {
   buildMergeInstruction,
   PRICE_SCALE,
 } from "@/lib/blockchain/market";
-import { classifyTxError, isUserRejection } from "@/lib/blockchain/verify-tx";
+import { classifyTxError, isUserRejection, extractSignature } from "@/lib/blockchain/verify-tx";
+import { SOLANA_NETWORK } from "@/lib/constants";
 
 interface TradingPanelNewProps {
   marketId: string;
@@ -80,6 +81,16 @@ export const TradingPanelNew = ({
 
   const currentPrice = tokenType === "yes" ? yesPrice : noPrice;
   const limitPriceNum = parseFloat(limitPrice) || 0;
+
+  const explorerUrl = (sig: string) =>
+    SOLANA_NETWORK === "mainnet"
+      ? `https://explorer.solana.com/tx/${sig}`
+      : `https://explorer.solana.com/tx/${sig}?cluster=${SOLANA_NETWORK}`;
+
+  const explorerAction = (sig: string) => ({
+    label: "View on Explorer",
+    onClick: () => window.open(explorerUrl(sig), "_blank"),
+  });
   const limitPriceFrac = limitPriceNum / 100; // cents → fraction (e.g. 50 → 0.50)
   const amountNum = parseFloat(amount) || 0;
 
@@ -165,8 +176,10 @@ export const TradingPanelNew = ({
         orderStartTime = Math.floor(Date.now() / 1000); // capture RIGHT before send()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sig = await send({ instructions: ixs as any[], authority: signer });
+        const sigStr = String(sig);
         toast.success(`Limit ${action} order placed!`, {
-          description: `${amountInput.toFixed(2)} ${outcomeToken} shares @ ${limitPriceNum}¢ — tx: ${String(sig).slice(0, 8)}…`,
+          description: `${amountInput.toFixed(2)} ${outcomeToken} shares @ ${limitPriceNum}¢`,
+          action: explorerAction(sigStr),
         });
       } else {
         const ixs = await buildMarketOrderInstruction({
@@ -179,8 +192,10 @@ export const TradingPanelNew = ({
         orderStartTime = Math.floor(Date.now() / 1000); // capture RIGHT before send()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sig = await send({ instructions: ixs as any[], authority: signer });
+        const sigStr = String(sig);
         toast.success(`Market ${action} filled!`, {
-          description: `${action === "buy" ? "Spent" : "Sold"} ${amountInput.toFixed(2)} ${action === "buy" ? "USDC on" : outcomeToken + " tokens for"} ${outcomeToken} — tx: ${String(sig).slice(0, 8)}…`,
+          description: `${action === "buy" ? "Spent" : "Sold"} ${amountInput.toFixed(2)} ${action === "buy" ? "USDC on" : outcomeToken + " tokens for"} ${outcomeToken}`,
+          action: explorerAction(sigStr),
         });
       }
 
@@ -209,13 +224,14 @@ export const TradingPanelNew = ({
         toast.dismiss(verifyToastId);
 
         if (outcome.kind === "success") {
-          toast.success(`${orderType === "limit" ? "Limit" : "Market"} ${action} order placed!`, {
-            description: `Confirmed — ${outcome.signature ? `tx: ${outcome.signature.slice(0, 8)}…` : "verified via indexer"}`,
-          });
+          const toastOpts = outcome.signature
+            ? { description: "Order confirmed on-chain", action: explorerAction(outcome.signature) }
+            : { description: "Order confirmed via indexer" };
+          toast.success(`${orderType === "limit" ? "Limit" : "Market"} ${action} order placed!`, toastOpts);
           setAmount("");
           setLimitPrice("");
         } else if (outcome.kind === "pending") {
-          toast.warning("Transaction pending", { description: outcome.hint });
+          toast.warning("Transaction submitted", { description: outcome.hint });
         } else if (outcome.kind === "failed") {
           toast.error("Order failed", { description: outcome.reason });
         } else {
@@ -225,8 +241,11 @@ export const TradingPanelNew = ({
         clearTimeout(safetyTimer);
         toast.dismiss(verifyToastId);
         console.error("[TradingPanel] verification error:", verifyErr);
+        // Try to salvage a signature from the original error for the explorer link
+        const salvageSig = extractSignature(err);
         toast.warning("Order status unknown", {
-          description: "Could not verify — check your wallet and Solana explorer.",
+          description: "Transaction may have gone through. Check your wallet history.",
+          ...(salvageSig ? { action: explorerAction(salvageSig) } : {}),
         });
       }
     } finally {

@@ -17,6 +17,14 @@ export const PROGRAM_ERROR_MESSAGES: Record<number, string> = {
   0x178b: "Settlement deadline has not been reached yet",
 };
 
+// Solana Kit SDK error codes that wrap the real failure — map to human messages
+const SOLANA_SDK_ERRORS: Record<number, string> = {
+  7618003: "Transaction failed to send. The network may be congested — please try again.",
+  7050003: "Transaction simulation failed. Check your balance and try again.",
+  7050002: "Transaction could not be simulated.",
+  6291456: "Transaction was not confirmed in time. Check your wallet history.",
+};
+
 function walkError<T>(
   err: unknown,
   pick: (o: Record<string, unknown>) => T | undefined,
@@ -37,10 +45,24 @@ function walkError<T>(
   return undefined;
 }
 
+// Only matches our Anchor program's custom error range (6000–6999).
+// Ignores large Solana Kit SDK error codes (e.g. 7618003) that are wrapper errors.
 export function extractProgramErrorCode(err: unknown): number | undefined {
-  return walkError<number>(err, (o) =>
-    typeof o.code === "number" ? o.code : undefined,
-  );
+  return walkError<number>(err, (o) => {
+    if (typeof o.code !== "number") return undefined;
+    const code = o.code;
+    if (code >= 6000 && code <= 6999) return code;
+    return undefined;
+  });
+}
+
+// Returns the top-level Solana SDK error code if present (used for friendly messages).
+function extractSolanaKitCode(err: unknown): number | undefined {
+  if (err && typeof err === "object") {
+    const obj = err as Record<string, unknown>;
+    if (typeof obj.code === "number" && obj.code > 6999) return obj.code;
+  }
+  return undefined;
 }
 
 export function extractSimLogs(err: unknown): string[] | undefined {
@@ -49,8 +71,7 @@ export function extractSimLogs(err: unknown): string[] | undefined {
   );
 }
 
-function extractSignature(err: unknown): string | undefined {
-  // Check nested object fields
+export function extractSignature(err: unknown): string | undefined {
   const fromWalk = walkError<string>(err, (o) => {
     for (const key of ["signature", "txSignature", "transactionSignature"]) {
       if (typeof o[key] === "string" && (o[key] as string).length > 40)
@@ -60,7 +81,6 @@ function extractSignature(err: unknown): string | undefined {
   });
   if (fromWalk) return fromWalk;
 
-  // Also scan error message string — some errors embed the sig in text
   const msg = err instanceof Error ? err.message : "";
   const match = msg.match(/[1-9A-HJ-NP-Za-km-z]{87,88}/);
   return match?.[0];
@@ -89,7 +109,16 @@ function isConfirmationTimeout(err: unknown): boolean {
   );
 }
 
-/** Fetch with an abort timeout so slow DB connections don't hang the poller. */
+/** Strips raw Solana SDK error noise from a message string. */
+function cleanErrorMessage(msg: string): string {
+  // "Solana error #7618003; Decode this error by running..." → strip everything from ";"
+  const semicolonIdx = msg.indexOf("; Decode this error");
+  if (semicolonIdx !== -1) return msg.slice(0, semicolonIdx).trim();
+  // "Solana error #XXXXXXX" with no friendly text → generic message
+  if (/^Solana error #\d+/.test(msg)) return "Transaction failed. Please try again.";
+  return msg;
+}
+
 async function fetchWithTimeout<T>(fn: () => Promise<T>, ms = 4_000): Promise<T> {
   return Promise.race([
     fn(),
@@ -99,13 +128,6 @@ async function fetchWithTimeout<T>(fn: () => Promise<T>, ms = 4_000): Promise<T>
   ]);
 }
 
-/**
- * Poll the backend indexer until we find evidence of the order/trade, or time out.
- *
- * @param orderStartTime  unix-seconds captured BEFORE send() was called.
- *                        We search for records where placed_at / event_timestamp
- *                        is within [orderStartTime - 60, now].
- */
 async function verifyViaBackend(
   marketId: number,
   userPubkey: string,
@@ -113,7 +135,6 @@ async function verifyViaBackend(
   maxWaitMs = 12_000,
 ): Promise<{ found: boolean; signature?: string }> {
   const deadline = Date.now() + maxWaitMs;
-  // Give the indexer one moment to process the block
   await new Promise((r) => setTimeout(r, 1_000));
 
   while (Date.now() < deadline) {
@@ -122,7 +143,6 @@ async function verifyViaBackend(
       const trade = trades.find(
         (t) =>
           t.taker === userPubkey &&
-          // allow a 60-second window before orderStartTime to account for clock drift
           t.event_timestamp >= orderStartTime - 60 &&
           t.event_timestamp <= orderStartTime + 300,
       );
@@ -172,31 +192,56 @@ async function verifyOnChain(
   return { landed: false };
 }
 
-/**
- * Given a thrown error from send(), classify what actually happened.
- * Pass `context` (marketId, userPubkey, orderStartTime) to enable backend verification.
- */
 export async function classifyTxError(
   err: unknown,
   context?: {
     marketId: number;
     userPubkey: string;
-    /** unix seconds — MUST be captured before send() was called */
     orderStartTime: number;
   },
 ): Promise<TxOutcome> {
-  // Log full error so we can see its structure during debugging
-  console.debug("[verify-tx] classifying error:", JSON.stringify(err, null, 2));
+  try {
+    console.debug("[verify-tx] classifying error:", JSON.stringify(err, null, 2));
+  } catch {
+    console.debug("[verify-tx] classifying error (non-serializable):", err);
+  }
 
   if (isUserRejection(err)) return { kind: "cancelled" };
 
+  // Our Anchor program's custom error (codes 6000–6999)
   const programCode = extractProgramErrorCode(err);
   if (programCode !== undefined) {
     return {
       kind: "failed",
       reason:
         PROGRAM_ERROR_MESSAGES[programCode] ??
-        `Program error 0x${programCode.toString(16)}`,
+        `Transaction rejected by the contract (code ${programCode})`,
+    };
+  }
+
+  // Solana Kit SDK wrapper errors — show friendly message, then dig for real cause
+  const sdkCode = extractSolanaKitCode(err);
+  if (sdkCode !== undefined) {
+    // If there's a nested program error inside the wrapper, surface that first
+    const nested = walkError<number>(
+      (err as Record<string, unknown>).cause ?? (err as Record<string, unknown>).context,
+      (o) => {
+        if (typeof o.code !== "number") return undefined;
+        if (o.code >= 6000 && o.code <= 6999) return o.code;
+        return undefined;
+      },
+    );
+    if (nested !== undefined) {
+      return {
+        kind: "failed",
+        reason: PROGRAM_ERROR_MESSAGES[nested] ?? `Transaction rejected by the contract (code ${nested})`,
+      };
+    }
+
+    // No nested program error — use the friendly SDK message
+    return {
+      kind: "failed",
+      reason: SOLANA_SDK_ERRORS[sdkCode] ?? "Transaction failed to send. Please try again.",
     };
   }
 
@@ -212,7 +257,6 @@ export async function classifyTxError(
   }
 
   if (isConfirmationTimeout(err)) {
-    // Try RPC first (fast if we have the sig)
     const sig = extractSignature(err);
     if (sig) {
       const { landed, failed } = await verifyOnChain(sig);
@@ -220,7 +264,6 @@ export async function classifyTxError(
       if (landed && failed) return { kind: "failed", reason: "Transaction reverted on-chain" };
     }
 
-    // Fall back to backend indexer polling
     if (context?.userPubkey) {
       const { found, signature } = await verifyViaBackend(
         context.marketId,
@@ -236,20 +279,16 @@ export async function classifyTxError(
     };
   }
 
-  // Unknown error — could still be a timeout with a different message
-  // If we have context, try the backend as a last resort
   if (context?.userPubkey) {
     const { found, signature } = await verifyViaBackend(
       context.marketId,
       context.userPubkey,
       context.orderStartTime,
-      5_000, // shorter window for unknown errors
+      5_000,
     );
     if (found) return { kind: "success", signature };
   }
 
-  return {
-    kind: "failed",
-    reason: err instanceof Error ? err.message : "Unknown error",
-  };
+  const rawMsg = err instanceof Error ? err.message : "Unknown error";
+  return { kind: "failed", reason: cleanErrorMessage(rawMsg) };
 }

@@ -9,6 +9,7 @@ import { RefreshCw, Loader2, ArrowDownToLine, CheckCircle2, Lock } from 'lucide-
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { buildClaimFundsInstruction } from '@/lib/blockchain/market';
+import { SOLANA_NETWORK } from '@/lib/constants';
 
 interface UserStatsCardProps {
   marketId: number;
@@ -55,14 +56,30 @@ export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint, isSettl
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
+  const explorerUrl = (sig: string) =>
+    SOLANA_NETWORK === 'mainnet'
+      ? `https://explorer.solana.com/tx/${sig}`
+      : `https://explorer.solana.com/tx/${sig}?cluster=${SOLANA_NETWORK}`;
+
+  const explorerAction = (sig: string) => ({
+    label: 'View on Explorer',
+    onClick: () => window.open(explorerUrl(sig), '_blank'),
+  });
+
   const handleClaimFunds = async () => {
     if (!session) { toast.error('Connect your wallet first.'); return; }
     const { signer } = createWalletTransactionSigner(session);
+    const claimableUsdc =
+      (stats?.claimableYes ?? 0) + (stats?.claimableNo ?? 0) + (stats?.claimableCollateral ?? 0);
     try {
       const ix = await buildClaimFundsInstruction({ userSigner: signer, marketId });
       const sig = await send({ instructions: [ix], authority: signer });
-      toast.success('Claimed!', {
-        description: `Funds transferred to your wallet — tx: ${String(sig).slice(0, 8)}…`,
+      const sigStr = String(sig);
+      toast.success('Funds claimed!', {
+        description: claimableUsdc > 0
+          ? `$${claimableUsdc.toFixed(2)} USDC transferred to your wallet.`
+          : 'Your claimable tokens have been transferred to your wallet.',
+        action: explorerAction(sigStr),
       });
       setRefreshTrigger(p => p + 1);
     } catch (err) {

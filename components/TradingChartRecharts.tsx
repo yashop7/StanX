@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, TooltipProps,
@@ -21,9 +21,39 @@ interface TradingChartRechartsProps {
 
 interface Point { time: number; value: number }
 
+// ── Module-level price cache ───────────────────────────────────────────────────
+// Shared across all chart instances. Prevents duplicate network requests when
+// multiple charts render for the same market, and avoids re-fetching when the
+// user switches between periods they've already seen.
+
+const TTL: Record<PricePeriod, number> = {
+  "1H":  30_000,       // 30 s — short periods change fast
+  "6H":  60_000,       // 1 min
+  "1D":  60_000,       // 1 min
+  "1W":  120_000,      // 2 min
+  "1M":  300_000,      // 5 min
+  "3M":  300_000,      // 5 min
+  "ALL": 300_000,      // 5 min
+};
+
+interface CacheEntry { points: Point[]; hasReal: boolean; ts: number }
+const priceCache = new Map<string, CacheEntry>();
+
+function cacheKey(marketId: number, token: string, period: PricePeriod) {
+  return `${marketId}:${token}:${period}`;
+}
+
+function fromCache(key: string, period: PricePeriod): CacheEntry | null {
+  const entry = priceCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > TTL[period]) { priceCache.delete(key); return null; }
+  return entry;
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PERIODS: PricePeriod[] = ["1H", "6H", "1D", "1W", "1M", "3M", "ALL"];
+const DEBOUNCE_MS = 200;
 
 // Flat 50¢ baseline shown when there is no real history
 function flat50(): Point[] {
@@ -56,6 +86,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
   if (!active || !payload?.length) return null;
   const val = payload[0].value as number;
   const d   = new Date(label as number);
+  if (isNaN(d.getTime())) return null;
   return (
     <div className="bg-[#0d0d0f]/95 border border-white/10 rounded-lg px-3 py-2.5 shadow-2xl backdrop-blur-sm">
       <p className="text-[10px] text-white/35 font-mono mb-1 uppercase tracking-wider">
@@ -106,40 +137,80 @@ export const TradingChartRecharts = ({
   token = "yes",
   volume,
 }: TradingChartRechartsProps) => {
-  const [period,      setPeriod]      = useState<PricePeriod>("ALL");
+  const [period,      setPeriod]      = useState<PricePeriod>("1D");
   const [chartData,   setChartData]   = useState<Point[]>([]);
   const [hasRealData, setHasRealData] = useState(false);
   const [isLoading,   setIsLoading]   = useState(true);
+  // Holds the debounce timer so we can cancel it when the period changes again
+  const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks whether the current load is still relevant (cancelled if period changed)
+  const loadIdRef    = useRef(0);
 
-  const loadPrices = useCallback(async (p: PricePeriod) => {
-    setIsLoading(true);
-    try {
-      const points = await fetchMarketPrices(marketId, token, p);
-      if (points.length > 0) {
-        setChartData(points.map(pt => ({
-          time:  pt.t,
-          // raw price e.g. "600000" → 600000 / 10000 = 60 (¢)
-          value: parseFloat(pt.p) / BACKEND_PRICE_SCALE,
-        })));
-        setHasRealData(true);
-      } else {
-        setChartData(flat50());
-        setHasRealData(false);
-      }
-    } catch {
-      setChartData(flat50());
-      setHasRealData(false);
-    } finally {
-      setIsLoading(false);
+  const parsePoints = useCallback((raw: { t: number; p: string }[]): { pts: Point[]; hasReal: boolean } => {
+    if (raw.length >= 2) {
+      return {
+        pts: raw.map(pt => ({ time: pt.t, value: parseFloat(pt.p) / BACKEND_PRICE_SCALE })),
+        hasReal: true,
+      };
     }
-  }, [marketId, token]);
+    if (raw.length === 1) {
+      const val = parseFloat(raw[0].p) / BACKEND_PRICE_SCALE;
+      return { pts: [{ time: raw[0].t, value: val }, { time: Date.now(), value: val }], hasReal: true };
+    }
+    return { pts: flat50(), hasReal: false };
+  }, []);
 
-  useEffect(() => { loadPrices(period); }, [loadPrices, period]);
+  const loadPrices = useCallback((p: PricePeriod) => {
+    // Cancel any pending debounce from a previous rapid-click
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    // Serve from cache immediately (no loading flash, no network call)
+    const key     = cacheKey(marketId, token, p);
+    const cached  = fromCache(key, p);
+    if (cached) {
+      setChartData(cached.points);
+      setHasRealData(cached.hasReal);
+      setIsLoading(false);
+      return;
+    }
+
+    // Show loading state while the debounce is pending
+    setChartData([]);
+    setHasRealData(false);
+    setIsLoading(true);
+
+    // Debounce: only fire after the user stops clicking for DEBOUNCE_MS
+    const myId = ++loadIdRef.current;
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const raw = await fetchMarketPrices(marketId, token, p);
+        // Stale-check: if another load started after this one, discard result
+        if (loadIdRef.current !== myId) return;
+        const { pts, hasReal } = parsePoints(raw);
+        priceCache.set(key, { points: pts, hasReal, ts: Date.now() });
+        setChartData(pts);
+        setHasRealData(hasReal);
+      } catch {
+        if (loadIdRef.current !== myId) return;
+        const { pts } = parsePoints([]);
+        setChartData(pts);
+        setHasRealData(false);
+      } finally {
+        if (loadIdRef.current === myId) setIsLoading(false);
+      }
+    }, DEBOUNCE_MS);
+  }, [marketId, token, parsePoints]);
+
+  useEffect(() => {
+    loadPrices(period);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, marketId, token]);
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
-  const current    = chartData[chartData.length - 1]?.value ?? 50;
-  const first      = chartData[0]?.value ?? 50;
+  const current    = hasRealData ? (chartData[chartData.length - 1]?.value ?? 50) : 50;
+  const first      = hasRealData ? (chartData[0]?.value ?? 50) : 50;
   const change     = hasRealData ? current - first : 0;
   const changePct  = hasRealData && first > 0 ? (change / first) * 100 : 0;
   const isUp       = change >= 0;
@@ -212,7 +283,13 @@ export const TradingChartRecharts = ({
       </div>
 
       {/* ── Chart ──────────────────────────────────────────────────────────── */}
-      <div className="h-[280px]">
+      <div className="h-[280px] relative">
+        {/* Empty state — shown when loading completes but no data for this period */}
+        {!isLoading && !hasRealData && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none z-10">
+            <p className="text-sm text-muted-foreground/40 font-mono">No trades in this period</p>
+          </div>
+        )}
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={chartData}
@@ -305,16 +382,16 @@ export const TradingChartRecharts = ({
           }
         </span>
 
-        {/* Period buttons */}
-        <div className="flex items-center gap-0.5">
+        {/* Period selector — pill tabs */}
+        <div className="flex items-center gap-0.5 bg-muted/20 border border-border/15 rounded-lg p-0.5">
           {PERIODS.map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
                 period === p
-                  ? "text-foreground font-bold"
-                  : "text-muted-foreground/35 hover:text-muted-foreground/70"
+                  ? "bg-background text-foreground shadow-sm border border-border/20"
+                  : "text-muted-foreground/45 hover:text-muted-foreground/80 hover:bg-muted/30"
               }`}
             >
               {p}

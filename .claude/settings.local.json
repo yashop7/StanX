@@ -34,7 +34,9 @@
       "Bash(gtimeout 45 ./node_modules/.bin/tsc --noEmit --skipLibCheck)",
       "Bash(./node_modules/.bin/tsc --noEmit --skipLibCheck)",
       "Bash(lsof -ti:3000,3001,3002)",
-      "Bash(~/.bun/bin/bun add *)"
+      "Bash(~/.bun/bin/bun add *)",
+      "Bash(node -e \"const c = 7618003; console.log\\('hex:', c.toString\\(16\\)\\); console.log\\('decoded base64:', Buffer.from\\('X19jb2RlPTc2MTgwMDM=', 'base64'\\).toString\\(\\)\\)\")",
+      "Bash(node -e ' *)"
     ]
   }
 }
