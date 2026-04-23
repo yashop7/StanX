@@ -17,6 +17,7 @@ The engineering challenge: making the orderbook feel instant across many concurr
 ---
 
 ## Architecture Overview
+<img width="1273" height="611" alt="Screenshot 2026-04-24 at 4 58 58 AM" src="https://github.com/user-attachments/assets/9508164e-981e-4436-92df-1f1af33ba147" />
 
 ```
 Solana Blockchain
