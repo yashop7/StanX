@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useWalletSession } from '@solana/react-hooks';
 import { Header } from '@/components/Header';
+import { LogoMark } from '@/components/LogoMark';
 import { Footer } from '@/components/Footer';
 import { PageTransition } from '@/components/PageTransition';
 import { Button } from '@/components/ui/button';
@@ -19,7 +20,6 @@ import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 import {
   Wallet,
   History,
-  TrendingUp,
   RefreshCw,
   AlertCircle,
   Loader2,
@@ -179,7 +179,7 @@ export default function Account() {
               {
                 label: 'Markets Created',
                 value: createdMarkets.length.toString(),
-                icon: TrendingUp,
+                icon: LogoMark,
                 sub: 'as authority',
               },
               {
@@ -208,7 +208,7 @@ export default function Account() {
           <div className="panel-card mb-6">
             <div className="panel-header flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-purple-400" />
+                <LogoMark className="h-4 w-4 text-purple-400" />
                 <h3 className="text-base font-semibold">Markets You Created</h3>
                 <span className="text-xs text-muted-foreground">({createdMarkets.length})</span>
               </div>
@@ -216,7 +216,7 @@ export default function Account() {
             <div className="p-5">
               {createdMarkets.length === 0 ? (
                 <div className="text-center py-10">
-                  <TrendingUp className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
+                  <LogoMark className="h-8 w-8 text-muted-foreground/30 mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">No markets created yet</p>
                   <p className="text-xs text-muted-foreground/60 mt-1">
                     Markets you initialize will appear here

@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Share2, TrendingUp, Clock, Loader2, AlertCircle, Lock, Trophy, CheckCircle2, XCircle, Activity, Youtube, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Share2, Clock, Loader2, AlertCircle, Lock, Trophy, CheckCircle2, XCircle, Activity, Youtube, ExternalLink } from 'lucide-react';
+import { LogoMark } from '@/components/LogoMark';
 import { formatDistanceToNow } from 'date-fns';
 import { useMarket, useAllMarkets } from '@/hooks/use-markets';
 import { UserStatsCard } from '@/components/UserStatsCard';
@@ -52,6 +53,33 @@ const MarketDetail = () => {
   const { markets: allMarkets } = useAllMarkets();
   const error = isNaN(marketId) ? 'Invalid market ID' : marketError?.message ?? null;
   const load = refreshMarket;
+
+  // Indexer-lag grace period: if market not found but ID is valid, poll for up to 15s
+  // before showing a hard 404. Newly-created markets take a few seconds to be indexed.
+  const [indexingDeadline, setIndexingDeadline] = useState<number | null>(null);
+  const isIndexing = indexingDeadline !== null;
+
+  useEffect(() => {
+    const notFound = !isLoading && !market && !isNaN(marketId) && error !== 'Invalid market ID';
+    if (!notFound) {
+      setIndexingDeadline(null);
+      return;
+    }
+    // Start 15s grace window on first not-found hit
+    setIndexingDeadline(prev => prev ?? Date.now() + 15_000);
+  }, [isLoading, market, marketId, error]);
+
+  useEffect(() => {
+    if (!isIndexing) return;
+    const interval = setInterval(() => {
+      if (Date.now() >= indexingDeadline!) {
+        setIndexingDeadline(null); // give up — show 404
+        return;
+      }
+      refreshMarket();
+    }, 2_000);
+    return () => clearInterval(interval);
+  }, [isIndexing, indexingDeadline, refreshMarket]);
 
   // Fetch market trades from backend
   const loadTrades = useCallback(() => {
@@ -199,14 +227,18 @@ const MarketDetail = () => {
   };
 
   // ── Loading state ──────────────────────────────────────────────────────────
-  if (isLoading) {
+  if (isLoading || isIndexing) {
     return (
       <div className="min-h-screen flex flex-col">
         <Header />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-3">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto" />
-            <p className="text-sm text-muted-foreground">Fetching market #{isNaN(marketId) ? rawId : marketId} from Solana…</p>
+            <p className="text-sm text-muted-foreground">
+              {isIndexing
+                ? `Market #${marketId} is being indexed… this takes a few seconds`
+                : `Fetching market #${isNaN(marketId) ? rawId : marketId} from Solana…`}
+            </p>
           </div>
         </div>
       </div>
@@ -322,7 +354,7 @@ const MarketDetail = () => {
                 {/* Stats Row */}
                 <div className="flex items-center gap-5 mt-4 pt-4 border-t border-border/20 dark:border-border/10 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1.5">
-                    <TrendingUp className="h-3.5 w-3.5" />
+                    <LogoMark className="h-3.5 w-3.5" />
                     <span className="font-medium text-foreground/80">{formatVolume(market.volume)}</span>
                   </span>
                   {market.isSettled ? (
@@ -609,12 +641,12 @@ const MarketDetail = () => {
                     </div>
                     <TabsContent value="orderbook" className="mt-0 p-4 space-y-4">
                       <OrderBook marketId={marketIdStr} yesPrice={market.yesPrice} noPrice={market.noPrice} selectedTokenType={selectedTokenType} userPubkey={userPubkey} />
-                      <div className="flex items-center gap-3 pt-2">
+                      {/* <div className="flex items-center gap-3 pt-2">
                         <div className="flex-1 h-px bg-violet-500/15" />
                         <span className="text-[9px] font-semibold uppercase tracking-widest text-violet-400/50 whitespace-nowrap">On-Chain (Debug)</span>
                         <div className="flex-1 h-px bg-violet-500/15" />
                       </div>
-                      <OnChainOrderBook marketId={marketIdStr} yesPrice={market.yesPrice} noPrice={market.noPrice} selectedTokenType={selectedTokenType} userPubkey={userPubkey} />
+                      <OnChainOrderBook marketId={marketIdStr} yesPrice={market.yesPrice} noPrice={market.noPrice} selectedTokenType={selectedTokenType} userPubkey={userPubkey} /> */}
                     </TabsContent>
                     <TabsContent value="trades" className="mt-0">
                       {marketTrades.length === 0 ? (

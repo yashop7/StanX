@@ -10,8 +10,8 @@ import {
   ChevronDown,
   History,
   Plus,
-  TrendingUp
 } from 'lucide-react';
+import { LogoMark } from '@/components/LogoMark';
 import { WalletButton } from '@/components/WalletButton';
 import {
   DropdownMenu,
@@ -51,7 +51,7 @@ export const Header = () => {
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 group shrink-0">
           <div className="w-6 h-6 rounded-md bg-foreground flex items-center justify-center">
-            <TrendingUp className="h-3.5 w-3.5 text-background" />
+            <LogoMark className="h-3.5 w-3.5 text-background" />
           </div>
           <span className="font-semibold text-sm tracking-tight text-foreground">Stanx</span>
         </Link>

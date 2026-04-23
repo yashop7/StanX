@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, ArrowRight, Eye, EyeOff, Mail, Lock, User, Sparkles } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Mail, Lock, User, Sparkles } from 'lucide-react';
+import { LogoMark } from '@/components/LogoMark';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 
@@ -79,7 +80,7 @@ export default function Auth() {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2.5 text-xl font-bold">
             <div className="p-2 rounded-xl bg-primary/10 border border-primary/20">
-              <TrendingUp className="h-5 w-5 text-primary" />
+              <LogoMark className="h-5 w-5 text-primary" />
             </div>
             <span>Stanx</span>
           </Link>
@@ -129,7 +130,7 @@ export default function Auth() {
         {/* Mobile Header */}
         <div className="lg:hidden p-4 border-b border-border/30 dark:border-border/15">
           <Link href="/" className="flex items-center gap-2 text-lg font-bold">
-            <TrendingUp className="h-5 w-5" />
+            <LogoMark className="h-5 w-5" />
             <span>Stanx</span>
           </Link>
         </div>

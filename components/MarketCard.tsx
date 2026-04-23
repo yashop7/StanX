@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { TrendingUp, Users, Clock, ArrowUpRight } from 'lucide-react';
+import { Users, Clock, ArrowUpRight } from 'lucide-react';
+import { LogoMark } from '@/components/LogoMark';
 import type { DisplayMarket } from '@/lib/blockchain/markets';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -122,7 +123,7 @@ export const MarketCard = ({ market, featured = false, compact = false }: Market
           {/* Meta */}
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1">
-              <TrendingUp className="h-3 w-3" />
+              <LogoMark className="h-3 w-3" />
               {formatVolume(market.volume)}
             </span>
             <span className="flex items-center gap-1">

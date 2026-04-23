@@ -10,7 +10,8 @@
  import { Badge } from '@/components/ui/badge';
  import { getMarketsAction } from '@/app/markets/actions';
  import type { DisplayMarket } from '@/lib/blockchain/markets';
- import { ArrowRight, ChevronDown, Zap, TrendingUp } from 'lucide-react';
+ import { ArrowRight, ChevronDown, Zap } from 'lucide-react';
+ import { LogoMark } from '@/components/LogoMark';
  import Link from 'next/link';
  import { cn } from '@/lib/utils';
  
@@ -190,7 +191,7 @@
                <div className="flex items-end justify-between mb-10">
                  <div>
                    <div className="flex items-center gap-2 mb-2">
-                     <TrendingUp className="h-5 w-5 text-success" />
+                     <LogoMark className="h-5 w-5 text-success" />
                      <span className="text-sm font-medium text-success uppercase tracking-wider">Trending</span>
                    </div>
                    <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Hot Markets</h2>

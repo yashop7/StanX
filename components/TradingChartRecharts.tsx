@@ -137,7 +137,7 @@ export const TradingChartRecharts = ({
   token = "yes",
   volume,
 }: TradingChartRechartsProps) => {
-  const [period,      setPeriod]      = useState<PricePeriod>("1D");
+  const [period,      setPeriod]      = useState<PricePeriod>("ALL");
   const [chartData,   setChartData]   = useState<Point[]>([]);
   const [hasRealData, setHasRealData] = useState(false);
   const [isLoading,   setIsLoading]   = useState(true);

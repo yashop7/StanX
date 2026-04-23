@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { LogoMark } from '@/components/LogoMark';
 import { useSpring, useMotionValueEvent } from "motion/react";
 import Link from "next/link";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
@@ -9,7 +10,6 @@ import {
   ArrowUpRight,
   Menu,
   X,
-  TrendingUp,
   Zap,
   Database,
   Lock,
@@ -122,7 +122,7 @@ function Navbar() {
               className="absolute inset-0 rounded-[7px]"
               style={{ background: ACCENT, opacity: 0.9 }}
             />
-            <TrendingUp className="absolute inset-0 m-auto h-3.5 w-3.5 text-black" />
+            <LogoMark className="absolute inset-0 m-auto h-3.5 w-3.5 text-black" />
           </div>
           <span className="text-[15px] font-semibold tracking-tight text-white group-hover:text-white/90 transition-colors">
             Stanx
@@ -2277,7 +2277,7 @@ function Footer() {
                   className="absolute inset-0 rounded-[7px]"
                   style={{ background: ACCENT }}
                 />
-                <TrendingUp className="absolute inset-0 m-auto h-3.5 w-3.5 text-black" />
+                <LogoMark className="absolute inset-0 m-auto h-3.5 w-3.5 text-black" />
               </div>
               <span className="text-[15px] font-semibold tracking-tight text-white">
                 Stanx

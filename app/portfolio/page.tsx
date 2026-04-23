@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useWalletSession } from '@solana/react-hooks';
 import { Header } from '@/components/Header';
+import { LogoMark } from '@/components/LogoMark';
 import { Footer } from '@/components/Footer';
 import { PageTransition } from '@/components/PageTransition';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,6 @@ import {
 import type { BackendTrade, BackendOrder, BackendMarket } from '@/lib/api/backend';
 import { useUsdcBalance } from '@/hooks/use-usdc-balance';
 import {
-  TrendingUp,
   Wallet,
   Activity,
   ArrowDownUp,
@@ -220,7 +220,7 @@ export default function Portfolio() {
               {
                 label: 'Markets',
                 value: markets.length.toString(),
-                icon: TrendingUp,
+                icon: LogoMark,
                 sub: 'active on backend',
               },
             ].map((stat, i) => (
