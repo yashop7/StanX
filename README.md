@@ -8,6 +8,15 @@ The entire system - from the Solana smart contract to the live orderbook streami
 
 ---
 
+## Documentation
+
+| Document | What's inside |
+|---|---|
+| [User Stories](https://docs.google.com/document/d/1kb2oOKC2i7t3VkV_5XF4fl10P69JRHtWaddwTAy7-Ws/edit?usp=sharing) | Full product spec - every user-facing flow broken down by role (trader, market creator, oracle), edge cases, and acceptance criteria |
+| [Smart Contract Architecture Diagram](https://drive.google.com/file/d/1qIhdnObFbG3sC4Z7kTC0z4bDumRWR50k/view) | Visual breakdown of the Anchor program - account structures, instruction flow, token lifecycle, and how YES/NO tokens settle on resolution |
+
+---
+
 ## What Makes This Different
 
 Most prediction markets are AMM-based (automated market makers with fixed price curves). Stanx runs a **central limit order book (CLOB)** - the same model used by professional trading exchanges. Users set their own prices, orders match peer-to-peer, and the book is always live.
@@ -42,6 +51,12 @@ Event Listener  ──────────────►  PostgreSQL  (sour
 
 **End-to-end latency (happy path):**
 Solana slot (~400ms) + indexer decode (<5ms) + Redis (<1ms) + broadcast (<1ms) = **~400ms**
+
+| Repo | What it contains |
+|---|---|
+| [yashop7/StanX-backend](https://github.com/yashop7/StanX-backend/) | Rust backend - event indexer, Axum API, WebSocket server, Redis fan-out |
+| [yashop7/StanX-Anchor-Contract](https://github.com/yashop7/StanX-Anchor-Contract) | Solana smart contract - order matching, token logic, market resolution |
+| this repo | Next.js frontend |
 
 ---
 
