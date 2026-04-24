@@ -169,13 +169,15 @@ prediction-market/          ← this repo (frontend)
 ├── lib/                    Utilities, design system
 └── types/                  TypeScript types
 
-stanx-backend/              ← separate backend repo
+stanx-backend/              ← https://github.com/yashop7/StanX-backend/
 ├── backend/                Axum HTTP + WebSocket server (port 3003)
 ├── event-listener/         Solana event indexer
 ├── db/                     SQLx query definitions
 ├── common/                 Shared types (OrderbookState, Diff, TradeTick)
 └── ws/                     Actix-ws room server (port 3000)
 ```
+
+> The backend lives in a separate repo: **[yashop7/StanX-backend](https://github.com/yashop7/StanX-backend/)** - Rust workspace containing the Axum API server, Solana event indexer, WebSocket streams, and all shared types.
 
 ---
 
