@@ -20,7 +20,7 @@ import {
 } from '@metaplex-foundation/umi';
 import { irysUploader } from '@metaplex-foundation/umi-uploader-irys';
 import type { MarketMetadata } from './metadata';
-import { fetchVideoPreview, type VideoPreview } from '@/lib/api/backend';
+import { fetchVideoPreview, fetchBackendMarkets, type VideoPreview } from '@/lib/api/backend';
 
 function getUmi() {
   const walletJson = process.env.IRYS_WALLET;
@@ -70,4 +70,67 @@ export async function uploadMetadataAction(metadata: MarketMetadata): Promise<st
 /** Fetch YouTube video preview data via the backend. */
 export async function previewVideoAction(url: string): Promise<VideoPreview> {
   return fetchVideoPreview(url);
+}
+
+/** Result returned by checkVideoMarketExistsAction */
+export interface ExistingVideoMarket {
+  marketId: number;
+  question: string;
+  metaDataUrl: string;
+  status: 'Active' | 'Settled' | 'Closed';
+}
+
+/**
+ * Check if a market already exists for a given YouTube video ID.
+ * Fetches the list of backend markets, then reads each market's Arweave
+ * metadata (with a per-fetch timeout) to look for the "Video ID" attribute.
+ * Returns the first matching market, or null if none found.
+ */
+export async function checkVideoMarketExistsAction(
+  videoId: string,
+): Promise<ExistingVideoMarket | null> {
+  let markets;
+  try {
+    markets = await fetchBackendMarkets();
+  } catch {
+    // Backend unreachable — can't check, allow creation to proceed
+    return null;
+  }
+
+  // For each market, fetch metadata with a 5s timeout to avoid hanging
+  const results = await Promise.allSettled(
+    markets.map(async (m) => {
+      if (!m.meta_data_url?.startsWith('http')) return null;
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 5_000);
+        const res = await fetch(m.meta_data_url, {
+          signal: controller.signal,
+          next: { revalidate: 300 },
+        });
+        clearTimeout(timer);
+        if (!res.ok) return null;
+        const json = (await res.json()) as Record<string, unknown>;
+        const attrs = Array.isArray(json.attributes)
+          ? (json.attributes as Array<{ trait_type: string; value: string }>)
+          : [];
+        const attr = (key: string) => attrs.find(a => a.trait_type === key)?.value;
+        const foundVideoId = attr('Video ID');
+        if (!foundVideoId || foundVideoId !== videoId) return null;
+        return {
+          marketId: m.market_id,
+          question: (json.name ?? json.title ?? json.question ?? `Market #${m.market_id}`) as string,
+          metaDataUrl: m.meta_data_url,
+          status: m.status,
+        } satisfies ExistingVideoMarket;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  for (const r of results) {
+    if (r.status === 'fulfilled' && r.value !== null) return r.value;
+  }
+  return null;
 }

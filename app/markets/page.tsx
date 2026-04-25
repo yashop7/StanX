@@ -102,8 +102,8 @@ const Markets = () => {
           )}
 
           {/* Search and Controls */}
-          <div className="flex gap-3 flex-wrap mb-8">
-            <div className="relative flex-1 min-w-60">
+          <div className="flex flex-col sm:flex-row gap-3 flex-wrap mb-8">
+            <div className="relative flex-1 sm:min-w-60">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search markets…"
@@ -113,48 +113,50 @@ const Markets = () => {
               />
             </div>
 
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40 h-11 bg-muted/30 border-border/30">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Markets</SelectItem>
-                <SelectItem value="live">Live</SelectItem>
-                <SelectItem value="ending-soon">Ending Soon</SelectItem>
-                <SelectItem value="settled">Settled</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex gap-3">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="flex-1 sm:w-40 h-11 bg-muted/30 border-border/30">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Markets</SelectItem>
+                  <SelectItem value="live">Live</SelectItem>
+                  <SelectItem value="ending-soon">Ending Soon</SelectItem>
+                  <SelectItem value="settled">Settled</SelectItem>
+                </SelectContent>
+              </Select>
 
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-45 h-11 bg-muted/30 border-border/30">
-                <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
-                <SelectValue placeholder="Sort by" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="volume">Highest Volume</SelectItem>
-                <SelectItem value="newest">Newest First</SelectItem>
-                <SelectItem value="ending-soon">Ending Soon</SelectItem>
-                <SelectItem value="id">Market ID</SelectItem>
-              </SelectContent>
-            </Select>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="flex-1 sm:w-44 h-11 bg-muted/30 border-border/30">
+                  <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="volume">Highest Volume</SelectItem>
+                  <SelectItem value="newest">Newest First</SelectItem>
+                  <SelectItem value="ending-soon">Ending Soon</SelectItem>
+                  <SelectItem value="id">Market ID</SelectItem>
+                </SelectContent>
+              </Select>
 
-            <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg">
-              <Button
-                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
-                size="icon"
-                onClick={() => setViewMode('grid')}
-                className="h-9 w-9"
-              >
-                <Grid3x3 className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
-                size="icon"
-                onClick={() => setViewMode('list')}
-                className="h-9 w-9"
-              >
-                <LayoutList className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg shrink-0">
+                <Button
+                  variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                  size="icon"
+                  onClick={() => setViewMode('grid')}
+                  className="h-9 w-9"
+                >
+                  <Grid3x3 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                  size="icon"
+                  onClick={() => setViewMode('list')}
+                  className="h-9 w-9"
+                >
+                  <LayoutList className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
 

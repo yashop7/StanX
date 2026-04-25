@@ -128,7 +128,7 @@ export const Header = () => {
                 </div>
               )}
 
-              <Link href="/create-market">
+              <Link href="/create-market" className="hidden sm:block">
                 <Button
                   size="sm"
                   variant="outline"
@@ -143,7 +143,7 @@ export const Header = () => {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-7 px-1.5 hover:bg-muted/60 gap-1.5">
+                  <Button variant="ghost" size="sm" className="hidden sm:flex h-7 px-1.5 hover:bg-muted/60 gap-1.5">
                     <Avatar className="h-5 w-5">
                       <AvatarFallback className="text-[10px] font-semibold bg-muted border border-border">
                         {wallet ? wallet.account.address.slice(0, 2).toUpperCase() : 'U'}

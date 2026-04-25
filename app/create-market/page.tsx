@@ -20,20 +20,33 @@ import {
   ArrowLeft, ArrowRight, CalendarIcon, Plus, Loader2,
   AlertCircle, CheckCircle2, Zap, ExternalLink, X,
   Eye, ThumbsUp, MessageCircle, Play, Link2, Youtube,
+  AlertTriangle, Clock,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useWalletSession, useSendTransaction } from '@solana/react-hooks';
+import { useWalletSession } from '@solana/react-hooks';
 import { createWalletTransactionSigner } from '@solana/client';
-import { address } from '@solana/kit';
+import {
+  appendTransactionMessageInstruction,
+  createTransactionMessage,
+  getSignatureFromTransaction,
+  getBase64EncodedWireTransaction,
+  pipe as solanaPipe,
+  setTransactionMessageFeePayerSigner,
+  setTransactionMessageLifetimeUsingBlockhash,
+  signTransactionMessageWithSigners,
+  address,
+} from '@solana/kit';
 import { USDC_MINT, SOLANA_NETWORK } from '@/lib/constants';
 import { getInitializeMarketInstructionAsync } from '@/generated/instructions/initializeMarket';
 import { fetchIndexerHealth } from '@/lib/api/backend';
 import { getAllMarkets } from '@/lib/blockchain/market';
-import { classifyTxError, isUserRejection } from '@/lib/blockchain/verify-tx';
+import { rpc } from '@/lib/blockchain/client';
+import { pollForConfirmation, isUserRejection } from '@/lib/blockchain/verify-tx';
 import type { VideoPreview } from '@/lib/api/backend';
-import { uploadMetadataAction, previewVideoAction } from './actions';
+import { uploadMetadataAction, previewVideoAction, checkVideoMarketExistsAction } from './actions';
+import type { ExistingVideoMarket } from './actions';
 import { buildVideoMarketMetadata, formatNumber, METRIC_LABELS, type VideoMetric } from './metadata';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -81,7 +94,14 @@ function getCurrentValue(video: VideoPreview, metric: VideoMetric): number {
 
 // ── Pipeline types ────
 
-type PipeStep = 'idle' | 'checking-indexer' | 'uploading-metadata' | 'initializing-market' | 'done' | 'error';
+type PipeStep =
+  | 'idle'
+  | 'checking-indexer'
+  | 'uploading-metadata'
+  | 'initializing-market'
+  | 'confirming-tx'
+  | 'done'
+  | 'error';
 
 interface Pipeline {
   step: PipeStep;
@@ -94,18 +114,22 @@ interface Pipeline {
 function progressPct(step: PipeStep): number {
   switch (step) {
     case 'checking-indexer':    return 8;
-    case 'uploading-metadata':  return 40;
-    case 'initializing-market': return 75;
+    case 'uploading-metadata':  return 35;
+    case 'initializing-market': return 60;
+    case 'confirming-tx':       return 85;
     case 'done':                return 100;
     default:                    return 0;
   }
 }
 
-function stepLabel(step: PipeStep, marketId: number | null): string {
+function stepLabel(step: PipeStep, marketId: number | null, sig: string | null): string {
   switch (step) {
-    case 'checking-indexer':    return 'Verifying indexer is online...';
-    case 'uploading-metadata':  return 'Uploading metadata to Arweave...';
-    case 'initializing-market': return 'Waiting for wallet approval...';
+    case 'checking-indexer':    return 'Verifying indexer is online…';
+    case 'uploading-metadata':  return 'Uploading metadata to Arweave…';
+    case 'initializing-market': return 'Waiting for wallet approval…';
+    case 'confirming-tx':       return sig
+      ? `Confirming on Solana… (${sig.slice(0, 8)}…)`
+      : 'Confirming on Solana…';
     case 'done':                return `Market #${marketId} is live on-chain`;
     default:                    return '';
   }
@@ -115,7 +139,6 @@ function stepLabel(step: PipeStep, marketId: number | null): string {
 export default function CreateMarket() {
   const router = useRouter();
   const wallet = useWalletSession();
-  const { send } = useSendTransaction();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const urlInputRef = useRef<HTMLInputElement>(null);
@@ -126,6 +149,10 @@ export default function CreateMarket() {
   const [video, setVideo] = useState<VideoPreview | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
 
+  // Duplicate market detection
+  const [duplicateMarket, setDuplicateMarket] = useState<ExistingVideoMarket | null>(null);
+  const [duplicateDismissed, setDuplicateDismissed] = useState(false);
+
   // Step 2: Market configuration
   const [metric, setMetric] = useState<VideoMetric>('views');
   const [targetInput, setTargetInput] = useState('');
@@ -135,6 +162,9 @@ export default function CreateMarket() {
   const [pipe, setPipe] = useState<Pipeline>({
     step: 'idle', metadataUrl: null, marketId: null, txSignature: null, error: null,
   });
+
+  // inFlightSig: captured BEFORE sending — lets us verify even if send() throws
+  const inFlightSig = useRef<string | null>(null);
 
   const busy = pipe.step !== 'idle' && pipe.step !== 'done' && pipe.step !== 'error';
   const inFlight = pipe.step !== 'idle';
@@ -151,10 +181,17 @@ export default function CreateMarket() {
     if (!videoId) { setUrlError('Not a valid YouTube URL. Try youtube.com/watch?v=... or youtu.be/...'); return; }
 
     setUrlError(null);
+    setDuplicateMarket(null);
+    setDuplicateDismissed(false);
     setFetchingPreview(true);
     try {
-      const data = await previewVideoAction(url);
+      // Fetch video preview + check for duplicate market in parallel
+      const [data, existing] = await Promise.all([
+        previewVideoAction(url),
+        checkVideoMarketExistsAction(videoId),
+      ]);
       setVideo(data);
+      if (existing) setDuplicateMarket(existing);
       // Auto-set a suggested target (2x current views, rounded up)
       const current = data.current_views;
       const suggested = roundUpNice(current * 2);
@@ -178,6 +215,9 @@ export default function CreateMarket() {
     setTargetInput('');
     setEndDate(undefined);
     setMetric('views');
+    setDuplicateMarket(null);
+    setDuplicateDismissed(false);
+    inFlightSig.current = null;
     setPipe({ step: 'idle', metadataUrl: null, marketId: null, txSignature: null, error: null });
   };
 
@@ -196,6 +236,8 @@ export default function CreateMarket() {
     if (!endDate) { toast.error('Pick a settlement deadline'); return; }
     if (endDate <= new Date()) { toast.error('Deadline must be in the future'); return; }
 
+    inFlightSig.current = null;
+
     // Check indexer
     setPipe({ step: 'checking-indexer', metadataUrl: null, marketId: null, txSignature: null, error: null });
     try {
@@ -211,7 +253,7 @@ export default function CreateMarket() {
 
     let marketId: number | null = null;
     try {
-      // Build metadata
+      // Upload metadata
       setPipe(p => ({ ...p, step: 'uploading-metadata' }));
       const deadline = Math.floor(endDate.getTime() / 1000);
       const metadata = buildVideoMarketMetadata({
@@ -226,12 +268,12 @@ export default function CreateMarket() {
       });
       const metadataUrl = await uploadMetadataAction(metadata);
 
-      // Get next market ID from chain (not indexer, which may lag)
+      // Get next market ID from chain
       const onChainMarkets = await getAllMarkets();
       marketId = onChainMarkets.length === 0 ? 1 : Math.max(...onChainMarkets.map(m => m.data.marketId)) + 1;
       setPipe(p => ({ ...p, step: 'initializing-market', metadataUrl, marketId }));
 
-      // Initialize on-chain
+      // Build the instruction
       const collateralMint = address(
         USDC_MINT[SOLANA_NETWORK as keyof typeof USDC_MINT] ?? USDC_MINT.devnet,
       );
@@ -241,10 +283,77 @@ export default function CreateMarket() {
         settlementDeadline: BigInt(deadline),
         metaDataUrl: metadataUrl,
       });
-      const signature = await send({ instructions: [ix], authority });
 
-      setPipe(p => ({ ...p, step: 'done', txSignature: signature }));
-      toast.success(`Market #${marketId} is live!`);
+      // Fetch a fresh blockhash for the transaction lifetime
+      const { value: latestBlockhash } = await rpc
+        .getLatestBlockhash({ commitment: 'confirmed' })
+        .send();
+
+      // Build + sign the transaction message
+      // signTransactionMessageWithSigners triggers the wallet popup here
+      const txMessage = solanaPipe(
+        createTransactionMessage({ version: 0 }),
+        (tx) => setTransactionMessageFeePayerSigner(authority, tx),
+        (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
+        (tx) => appendTransactionMessageInstruction(ix, tx),
+      );
+      const signedTx = await signTransactionMessageWithSigners(txMessage);
+
+      // Capture the signature IMMEDIATELY — before sending
+      // This is the key: even if send fails / times out, we have the sig to verify
+      const sig = getSignatureFromTransaction(signedTx);
+      inFlightSig.current = sig;
+      setPipe(p => ({ ...p, step: 'confirming-tx', txSignature: sig }));
+
+      // Send (fire-and-forget — we poll for confirmation ourselves)
+      try {
+        const wireTransaction = getBase64EncodedWireTransaction(signedTx);
+        await rpc.sendTransaction(wireTransaction, {
+          encoding: 'base64',
+          preflightCommitment: 'confirmed',
+          skipPreflight: false,
+        }).send();
+      } catch (sendErr) {
+        // Only bail out immediately if the user rejected or simulation failed
+        if (isUserRejection(sendErr)) {
+          setPipe(p => ({ ...p, step: 'idle' }));
+          toast.info('Transaction cancelled');
+          return;
+        }
+        // Otherwise: tx may still be sent — fall through to polling
+        console.warn('[create-market] sendTransaction threw (may still land):', sendErr);
+      }
+
+      // Poll for confirmation
+      const confirmation = await pollForConfirmation(sig, 75_000);
+
+      if (confirmation.result === 'confirmed') {
+        setPipe(p => ({ ...p, step: 'done', txSignature: sig }));
+        toast.success(`Market #${marketId} is live!`);
+        return;
+      }
+
+      if (confirmation.result === 'failed') {
+        const errMsg = typeof confirmation.err === 'object' && confirmation.err !== null
+          ? JSON.stringify(confirmation.err)
+          : 'Transaction reverted on-chain';
+        setPipe(p => ({ ...p, step: 'error', error: errMsg }));
+        toast.error('Transaction failed on-chain', { description: errMsg });
+        return;
+      }
+
+      // Timeout — tx may have landed but RPC hasn't confirmed yet
+      if (confirmation.result === 'timeout') {
+        setPipe(p => ({
+          ...p,
+          step: 'error',
+          error: 'Confirmation timed out. Check Solana Explorer with the tx signature above — if it shows confirmed, your market was created.',
+        }));
+        toast.warning('Confirmation timed out', {
+          description: `Check Explorer for sig: ${sig.slice(0, 16)}…`,
+          duration: 10_000,
+        });
+      }
     } catch (err: unknown) {
       console.error('[create-market] error:', err);
 
@@ -254,82 +363,26 @@ export default function CreateMarket() {
         return;
       }
 
-      // Real on-chain program errors detected during simulation
-      if (err && typeof err === 'object' && 'transactionPlanResult' in err) {
-        console.error('[create-market] transactionPlanResult:', (err as any).transactionPlanResult);
-        const results: any[] = (err as any).transactionPlanResult ?? [];
-        const failed = results.find((r: any) => r?.error);
-        if (failed?.error) {
-          const logs: string[] = failed.error?.context?.logs ?? [];
-          console.error('[create-market] on-chain logs:', logs);
-          const programError = logs.findLast((l: string) => l.includes('Error') || l.includes('failed'));
-          if (programError) {
-            const msg = `On-chain error: ${programError}`;
-            setPipe(p => ({ ...p, step: 'error', error: msg }));
-            toast.error('Transaction failed', { description: programError });
-            return;
-          }
-        }
-      }
-
-      // For timeouts and RPC errors: verify before declaring failure
-      const verifyToastId = toast.loading('Verifying market creation on-chain…');
-      const safetyTimer = setTimeout(() => toast.dismiss(verifyToastId), 25_000);
-
-      try {
-        // No backend context for market creation — classifyTxError uses on-chain RPC sig check
-        const outcome = await classifyTxError(err);
-        clearTimeout(safetyTimer);
-        toast.dismiss(verifyToastId);
-
-        if (outcome.kind === 'success') {
-          setPipe(p => ({ ...p, step: 'done', txSignature: outcome.signature ?? null }));
+      // If we already captured a signature, try confirming it even on error
+      const capturedSig = inFlightSig.current;
+      if (capturedSig) {
+        setPipe(p => ({ ...p, step: 'confirming-tx', txSignature: capturedSig }));
+        const confirmation = await pollForConfirmation(capturedSig, 60_000);
+        if (confirmation.result === 'confirmed') {
+          setPipe(p => ({ ...p, step: 'done', txSignature: capturedSig }));
           toast.success(`Market #${marketId ?? '?'} is live!`);
           return;
         }
-
-        if (outcome.kind === 'pending') {
-          if (marketId !== null) {
-            // RPC couldn't confirm — poll GET /api/markets/:id until indexed or timeout
-            const checkToastId = toast.loading('Checking if market was registered on-chain…');
-            let found = false;
-            try {
-              found = await pollForMarket(marketId);
-            } finally {
-              toast.dismiss(checkToastId);
-            }
-            if (found) {
-              setPipe(p => ({ ...p, step: 'done' }));
-              toast.success(`Market #${marketId} is live!`);
-              return;
-            }
-          }
-          setPipe(p => ({ ...p, step: 'error', error: outcome.hint }));
-          toast.warning('Market status unknown', { description: outcome.hint });
-          return;
-        }
-
-        if (outcome.kind === 'cancelled') {
-          setPipe(p => ({ ...p, step: 'idle' }));
-          toast.info('Transaction cancelled');
-          return;
-        }
-
-        // outcome.kind === 'failed'
-        setPipe(p => ({ ...p, step: 'error', error: outcome.reason }));
-        toast.error('Failed to create market', { description: outcome.reason });
-      } catch (verifyErr) {
-        clearTimeout(safetyTimer);
-        toast.dismiss(verifyToastId);
-        console.error('[create-market] verification error:', verifyErr);
-        toast.warning('Market status unknown', {
-          description: 'Could not verify — check your wallet and Solana explorer.',
-        });
       }
+
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setPipe(p => ({ ...p, step: 'error', error: msg }));
+      toast.error('Failed to create market', { description: msg });
     }
   };
 
   const pct = progressPct(pipe.step);
+  const currentSig = pipe.txSignature ?? inFlightSig.current;
 
   // ── Generated market question preview 
 
@@ -439,53 +492,93 @@ export default function CreateMarket() {
                   </p>
                 </>
               ) : (
-                /* ── Video Preview Card ───── */
-                <div className="rounded-xl overflow-hidden border border-border/30">
-                  {/* Thumbnail hero */}
-                  <div className="relative aspect-video bg-muted/20">
-                    <img
-                      src={video.thumbnail}
-                      alt={video.title}
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
-                    <div className="absolute bottom-0 left-0 right-0 p-4">
-                      <h3 className="text-white font-semibold text-lg leading-tight line-clamp-2">
-                        {video.title}
-                      </h3>
-                      <p className="text-white/70 text-sm mt-1">{video.channel_name}</p>
+                /* ── Video Preview Card + duplicate warning ───── */
+                <div className="space-y-3">
+                  <div className="rounded-xl overflow-hidden border border-border/30">
+                    {/* Thumbnail hero */}
+                    <div className="relative aspect-video bg-muted/20">
+                      <img
+                        src={video.thumbnail}
+                        alt={video.title}
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                        <h3 className="text-white font-semibold text-lg leading-tight line-clamp-2">
+                          {video.title}
+                        </h3>
+                        <p className="text-white/70 text-sm mt-1">{video.channel_name}</p>
+                      </div>
+                    </div>
+
+                    {/* Stats row */}
+                    <div className="grid grid-cols-3 divide-x divide-border/30 bg-muted/10">
+                      {METRICS.map(({ key, icon: Icon }) => {
+                        const value = getCurrentValue(video, key);
+                        const isSelected = metric === key;
+                        return (
+                          <div
+                            key={key}
+                            className={cn(
+                              'py-3 px-4 text-center transition-colors',
+                              isSelected && 'bg-primary/5',
+                            )}
+                          >
+                            <div className="flex items-center justify-center gap-1.5 mb-1">
+                              <Icon className={cn('h-3.5 w-3.5', isSelected ? 'text-primary' : 'text-muted-foreground')} />
+                              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                                {METRIC_LABELS[key]}
+                              </span>
+                            </div>
+                            <p className={cn(
+                              'text-lg font-bold tabular-nums',
+                              isSelected ? 'text-foreground' : 'text-muted-foreground',
+                            )}>
+                              {formatNumber(value)}
+                            </p>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  {/* Stats row */}
-                  <div className="grid grid-cols-3 divide-x divide-border/30 bg-muted/10">
-                    {METRICS.map(({ key, icon: Icon }) => {
-                      const value = getCurrentValue(video, key);
-                      const isSelected = metric === key;
-                      return (
-                        <div
-                          key={key}
-                          className={cn(
-                            'py-3 px-4 text-center transition-colors',
-                            isSelected && 'bg-primary/5',
-                          )}
-                        >
-                          <div className="flex items-center justify-center gap-1.5 mb-1">
-                            <Icon className={cn('h-3.5 w-3.5', isSelected ? 'text-primary' : 'text-muted-foreground')} />
-                            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                              {METRIC_LABELS[key]}
-                            </span>
-                          </div>
-                          <p className={cn(
-                            'text-lg font-bold tabular-nums',
-                            isSelected ? 'text-foreground' : 'text-muted-foreground',
-                          )}>
-                            {formatNumber(value)}
-                          </p>
+                  {/* Duplicate market warning — outside overflow-hidden card */}
+                  {duplicateMarket && !duplicateDismissed && (
+                    <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                      <AlertTriangle className="h-4 w-4 text-amber-400 mt-0.5 shrink-0" />
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <p className="text-sm font-semibold text-amber-300">
+                          A market for this video already exists
+                        </p>
+                        <p className="text-xs text-amber-400/80 leading-relaxed">
+                          <span className="font-medium text-amber-300/90">Market #{duplicateMarket.marketId}:</span>{' '}
+                          {duplicateMarket.question}
+                        </p>
+                        <div className="flex items-center gap-3 pt-1">
+                          <a
+                            href={`/market/${duplicateMarket.marketId}`}
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-300 hover:text-amber-200 transition-colors"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            View existing market
+                          </a>
+                          <span className="text-amber-500/40 text-xs">·</span>
+                          <button
+                            onClick={() => setDuplicateDismissed(true)}
+                            className="text-xs text-amber-500/60 hover:text-amber-400 transition-colors"
+                          >
+                            Create anyway
+                          </button>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                      <button
+                        onClick={() => setDuplicateDismissed(true)}
+                        className="text-amber-500/50 hover:text-amber-400 transition-colors shrink-0"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -724,7 +817,7 @@ export default function CreateMarket() {
                   <Button
                     onClick={handleSubmit}
                     variant="success"
-                    disabled={busy}
+                    disabled={busy || isError}
                     className="h-12 px-8 font-semibold shadow-lg"
                   >
                     {busy ? (
@@ -732,6 +825,7 @@ export default function CreateMarket() {
                         <Loader2 className="h-4 w-4 animate-spin" />
                         {pipe.step === 'checking-indexer'    ? 'Checking...'       :
                          pipe.step === 'uploading-metadata'  ? 'Uploading...'      :
+                         pipe.step === 'confirming-tx'       ? 'Confirming...'     :
                                                                'Waiting for wallet...'}
                       </span>
                     ) : (
@@ -769,10 +863,16 @@ export default function CreateMarket() {
                     <p className="text-sm text-muted-foreground">Your prediction market is on-chain and ready for trading.</p>
                   </div>
                 </div>
-                {pipe.txSignature && (
-                  <p className="text-xs font-mono text-muted-foreground/50 break-all">
-                    tx: {pipe.txSignature}
-                  </p>
+                {currentSig && (
+                  <a
+                    href={`https://explorer.solana.com/tx/${currentSig}?cluster=devnet`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground/50 hover:text-muted-foreground break-all transition-colors"
+                  >
+                    <ExternalLink className="h-3 w-3 shrink-0" />
+                    tx: {currentSig}
+                  </a>
                 )}
                 <div className="flex items-center gap-3">
                   <Button
@@ -828,13 +928,26 @@ export default function CreateMarket() {
               </div>
               <div className="flex-1 min-w-0">
                 {isError ? (
-                  <p className="text-sm font-medium text-red-400 truncate">{pipe.error}</p>
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium text-red-400 truncate">{pipe.error}</p>
+                    {currentSig && (
+                      <a
+                        href={`https://explorer.solana.com/tx/${currentSig}?cluster=devnet`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 text-[10px] font-mono text-red-400/50 hover:text-red-400/80 transition-colors truncate"
+                      >
+                        <ExternalLink className="h-2.5 w-2.5 shrink-0" />
+                        View tx on Explorer
+                      </a>
+                    )}
+                  </div>
                 ) : (
                   <p className={cn(
                     'text-sm font-medium truncate',
                     isDone ? 'text-emerald-400' : 'text-foreground/80',
                   )}>
-                    {stepLabel(pipe.step, pipe.marketId)}
+                    {stepLabel(pipe.step, pipe.marketId, pipe.txSignature)}
                   </p>
                 )}
               </div>

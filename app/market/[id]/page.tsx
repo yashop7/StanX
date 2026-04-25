@@ -7,23 +7,23 @@ import { createWalletTransactionSigner } from '@solana/client';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
+import { FaucetBanner } from '@/components/FaucetBanner';
 import { TradingChartRecharts } from '@/components/TradingChartRecharts';
 import { TradingPanelNew } from '@/components/TradingPanelNew';
 import { OrderBook } from '@/components/OrderBook';
-import { OnChainOrderBook } from '@/components/OnChainOrderBook';
 import { MarketSwitcher } from '@/components/MarketSwitcher';
 import { PageTransition } from '@/components/PageTransition';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Share2, Clock, Loader2, AlertCircle, Lock, Trophy, CheckCircle2, XCircle, Activity, Youtube, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Share2, Loader2, AlertCircle, Lock, Trophy, CheckCircle2, XCircle, Activity, Youtube, ExternalLink } from 'lucide-react';
 import { LogoMark } from '@/components/LogoMark';
 import { formatDistanceToNow } from 'date-fns';
 import { useMarket, useAllMarkets } from '@/hooks/use-markets';
 import { UserStatsCard } from '@/components/UserStatsCard';
 import { buildCloseMarketInstruction, buildClaimRewardsInstruction, buildSetWinnerInstruction } from '@/lib/blockchain/market';
-import { MarketCountdown, MarketCountdownBlocks } from '@/components/MarketCountdown';
+import { MarketCountdownBlocks } from '@/components/MarketCountdown';
 import { fetchMarketTrades, fetchMarketResolution, fetchVideoPreview, toDisplayPrice, toDisplayQty } from '@/lib/api/backend';
 import type { BackendTrade, MarketResolution, VideoPreview } from '@/lib/api/backend';
 import { formatNumber } from '@/app/create-market/metadata';
@@ -226,6 +226,48 @@ const MarketDetail = () => {
     return `$${v.toFixed(2)}`;
   };
 
+  const renderTradeCards = (trades: BackendTrade[]) => (
+    <div className="space-y-2 sm:hidden">
+      {trades.map((trade) => {
+        const isBuy = trade.taker_side === 'Buy';
+        const isYes = trade.token_type === 'Yes';
+        const price = toDisplayPrice(trade.price);
+        const qty = toDisplayQty(trade.quantity);
+        const sAgo = Math.floor(Date.now() / 1000 - trade.event_timestamp);
+        const timeStr = sAgo < 60 ? `${sAgo}s` : sAgo < 3600 ? `${Math.floor(sAgo/60)}m` : sAgo < 86400 ? `${Math.floor(sAgo/3600)}h` : `${Math.floor(sAgo/86400)}d`;
+        return (
+          <div key={trade.id} className="rounded-xl border border-border/60 bg-muted/10 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={cn('text-[11px] font-bold leading-none', isBuy ? 'text-emerald-400' : 'text-red-400')}>
+                  {isBuy ? 'BUY' : 'SELL'}
+                </span>
+                <span className={cn('rounded-sm px-1.5 py-[2px] text-[10px] font-semibold', isYes ? 'bg-emerald-500/12 text-emerald-400/80' : 'bg-red-500/12 text-red-400/80')}>
+                  {trade.token_type.toUpperCase()}
+                </span>
+              </div>
+              <span className="font-mono text-[10px] text-muted-foreground/40">{timeStr}</span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="rounded-lg border border-border/40 bg-background/40 p-2.5">
+                <div className="text-[10px] text-muted-foreground">Price</div>
+                <div className={cn('mt-1 font-mono text-sm font-semibold', isBuy ? 'text-emerald-400' : 'text-red-400')}>
+                  {price.toFixed(1)}¢
+                </div>
+              </div>
+              <div className="rounded-lg border border-border/40 bg-background/40 p-2.5">
+                <div className="text-[10px] text-muted-foreground">Size</div>
+                <div className="mt-1 font-mono text-sm text-foreground/80">
+                  {qty >= 1000 ? `${(qty/1000).toFixed(1)}K` : qty.toFixed(qty < 10 ? 2 : 0)}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   // ── Loading state ──────────────────────────────────────────────────────────
   if (isLoading || isIndexing) {
     return (
@@ -271,11 +313,12 @@ const MarketDetail = () => {
   const marketIdStr = market.marketId.toString();
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col overflow-x-hidden bg-background">
       <Header />
+      <FaucetBanner />
 
       <PageTransition>
-        <main className="flex-1 container mx-auto px-4 py-6 md:py-8 max-w-7xl">
+        <main className="flex-1 container mx-auto max-w-7xl px-3 py-5 sm:px-4 sm:py-6 md:py-8">
           {/* Back Button */}
           <Button variant="ghost" size="sm" className="mb-4 -ml-2 text-muted-foreground hover:text-foreground" asChild>
             <Link href="/markets">
@@ -285,275 +328,273 @@ const MarketDetail = () => {
           </Button>
 
           {/* Two Column Layout */}
-          <div className="grid lg:grid-cols-12 gap-6">
-            {/* Left Column */}
-            <div className="lg:col-span-8 space-y-6">
-              {/* Market Header */}
-              <div className="panel-card p-5">
-                <div className="flex gap-4">
-                  <div className="shrink-0">
-                    <div className="w-14 h-14 rounded-xl overflow-hidden ring-1 ring-border/50 bg-muted">
-                      <img
-                        src={market.image}
-                        alt={market.question}
-                        className="w-full h-full object-cover"
-                      />
+          <div className="grid items-start gap-5 lg:grid-cols-12 lg:gap-6">
+            {/* Left Column — market banner, chart, activity, info */}
+            <div className="order-1 min-w-0 space-y-5 lg:col-span-8 lg:space-y-6">
+              <div className="space-y-4">
+                {/* Market Header */}
+                <div className="panel-card p-4 sm:p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+                    <div className="shrink-0">
+                      <div className="h-12 w-12 overflow-hidden rounded-xl bg-muted ring-1 ring-border/50 sm:h-14 sm:w-14">
+                        <img
+                          src={market.image}
+                          alt={market.question}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1.5 flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <Badge variant="secondary" className="bg-muted/80 px-2 py-0.5 text-[10px] font-medium">
+                          {market.category}
+                        </Badge>
+                        <Badge className={`border-0 px-2 py-0.5 text-[10px] font-medium ${
+                          market.isSettled
+                            ? market.winningOutcome === 'YES'
+                              ? 'bg-success/15 text-success'
+                              : market.winningOutcome === 'NO'
+                                ? 'bg-danger/15 text-danger'
+                                : 'bg-muted/30 text-muted-foreground'
+                            : market.status === 'ending-soon'
+                              ? 'bg-amber-500/15 text-amber-400'
+                              : 'bg-emerald-500/15 text-emerald-500'
+                        }`}>
+                          {market.isSettled
+                            ? market.winningOutcome === 'YES' ? 'YES Won'
+                            : market.winningOutcome === 'NO'  ? 'NO Won'
+                            : 'Resolved'
+                            : market.status === 'ending-soon' ? 'Ending Soon' : 'Live'}
+                        </Badge>
+                        <Badge variant="outline" className="px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
+                          #{market.marketId}
+                        </Badge>
+                      </div>
+
+                      <h1 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground sm:text-base">
+                        {market.question}
+                      </h1>
+                    </div>
+
+                    <div className="flex shrink-0 gap-1.5 self-start sm:self-start">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                        onClick={() => {
+                          const url = window.location.href;
+                          navigator.clipboard.writeText(url).then(() => {
+                            toast.success('Link copied!', { description: url });
+                          });
+                        }}
+                        title="Copy link"
+                      >
+                        <Share2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <Badge variant="secondary" className="text-[10px] font-medium px-2 py-0.5 bg-muted/80">
-                        {market.category}
-                      </Badge>
-                      <Badge className={`text-[10px] font-medium px-2 py-0.5 border-0 ${
-                        market.isSettled
-                          ? market.winningOutcome === 'YES'
-                            ? 'bg-success/15 text-success'
-                            : market.winningOutcome === 'NO'
-                              ? 'bg-danger/15 text-danger'
-                              : 'bg-muted/30 text-muted-foreground'
-                          : market.status === 'ending-soon'
-                            ? 'bg-amber-500/15 text-amber-400'
-                            : 'bg-emerald-500/15 text-emerald-500'
-                      }`}>
-                        {market.isSettled
-                          ? market.winningOutcome === 'YES' ? 'YES Won'
-                          : market.winningOutcome === 'NO'  ? 'NO Won'
-                          : 'Resolved'
-                          : market.status === 'ending-soon' ? 'Ending Soon' : 'Live'}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] font-mono px-2 py-0.5 text-muted-foreground">
-                        #{market.marketId}
-                      </Badge>
-                    </div>
-
-                    <h1 className="text-base font-semibold leading-snug line-clamp-2 text-foreground">
-                      {market.question}
-                    </h1>
-                  </div>
-
-                  <div className="flex gap-1.5 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg"
-                      onClick={() => {
-                        const url = window.location.href;
-                        navigator.clipboard.writeText(url).then(() => {
-                          toast.success('Link copied!', { description: url });
-                        });
-                      }}
-                      title="Copy link"
-                    >
-                      <Share2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Stats Row */}
-                <div className="flex items-center gap-5 mt-4 pt-4 border-t border-border/20 dark:border-border/10 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <LogoMark className="h-3.5 w-3.5" />
-                    <span className="font-medium text-foreground/80">{formatVolume(market.volume)}</span>
-                  </span>
-                  {market.isSettled ? (
-                    <span className={cn(
-                      'text-xs font-semibold',
-                      market.winningOutcome === 'YES' ? 'text-success' :
-                      market.winningOutcome === 'NO'  ? 'text-danger' : 'text-muted-foreground'
-                    )}>
-                      {market.winningOutcome === 'YES' ? 'YES wins · $1.00 per token'
-                      : market.winningOutcome === 'NO'  ? 'NO wins · $1.00 per token'
-                      : 'Proportional return'}
+                  <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/20 pt-4 text-xs text-muted-foreground dark:border-border/10">
+                    <span className="flex items-center gap-1.5">
+                      <LogoMark className="h-3.5 w-3.5" />
+                      <span className="font-medium text-foreground/80">{formatVolume(market.volume)}</span>
                     </span>
-                  ) : (
-                    <span className="text-xs font-mono text-muted-foreground/60">
-                      YES {(market.yesPrice * 100).toFixed(1)}¢ · NO {(market.noPrice * 100).toFixed(1)}¢
-                    </span>
-                  )}
-                  {market.videoId && (
-                    <a
-                      href={market.videoUrl ?? `https://youtube.com/watch?v=${market.videoId}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1.5 ml-auto text-muted-foreground/50 hover:text-red-400 transition-colors"
-                    >
-                      <Youtube className="h-3.5 w-3.5" />
-                      <span className="text-[11px] font-medium">Watch Video</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
-
-                {/* Settlement Deadline — dedicated segmented block row */}
-                <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/10 dark:border-border/[0.06]">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-widest leading-none">
-                      {market.isSettled ? 'Resolved' : 'Resolves In'}
-                    </span>
-                    {!market.isSettled && (
-                      <span className="text-[10px] text-muted-foreground/40 font-mono">
-                        {market.endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {market.isSettled ? (
+                      <span className={cn(
+                        'text-xs font-semibold',
+                        market.winningOutcome === 'YES' ? 'text-success' :
+                        market.winningOutcome === 'NO'  ? 'text-danger' : 'text-muted-foreground'
+                      )}>
+                        {market.winningOutcome === 'YES' ? 'YES wins · $1.00 per token'
+                        : market.winningOutcome === 'NO'  ? 'NO wins · $1.00 per token'
+                        : 'Proportional return'}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-mono text-muted-foreground/60">
+                        YES {(market.yesPrice * 100).toFixed(1)}¢ · NO {(market.noPrice * 100).toFixed(1)}¢
                       </span>
                     )}
-                  </div>
-                  <MarketCountdownBlocks targetDate={market.endDate} isSettled={market.isSettled} />
-                </div>
-              </div>
-
-              {/* ── Resolution Banner ──────────────────────────────── */}
-              {market.isSettled && (() => {
-                const isYes     = market.winningOutcome === 'YES';
-                const isNo      = market.winningOutcome === 'NO';
-                const isNeither = market.winningOutcome === 'NEITHER';
-                return (
-                  <div className={cn(
-                    'rounded-xl border bg-card p-5 flex items-center justify-between gap-4',
-                    isYes ? 'border-success/25' : isNo ? 'border-danger/25' : 'border-border'
-                  )}>
-                    <div className="flex items-center gap-3.5">
-                      <div className={cn(
-                        'h-9 w-9 rounded-full flex items-center justify-center shrink-0',
-                        isYes ? 'bg-success/10' : isNo ? 'bg-danger/10' : 'bg-muted/30'
-                      )}>
-                        <Trophy className={cn('h-4 w-4', isYes ? 'text-success' : isNo ? 'text-danger' : 'text-muted-foreground')} />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-widest mb-0.5">
-                          Market Resolved
-                        </p>
-                        <p className={cn('text-base font-semibold', isYes ? 'text-success' : isNo ? 'text-danger' : 'text-foreground')}>
-                          {isNeither ? 'No winner, proportional return' : `${market.winningOutcome} wins · $1.00 per token`}
-                        </p>
-                      </div>
-                    </div>
-                    <span className={cn(
-                      'text-[10px] font-semibold px-2 py-1 rounded-md border shrink-0',
-                      isYes ? 'bg-success/10 border-success/20 text-success' :
-                      isNo  ? 'bg-danger/10 border-danger/20 text-danger' :
-                              'bg-muted/30 border-border text-muted-foreground'
-                    )}>
-                      Final
-                    </span>
-                  </div>
-                );
-              })()}
-
-              {/* ── Creator Settle Banner — visible to creator when deadline passed ── */}
-              {userPubkey?.trim() === market.authority?.trim() && !market.isSettled && new Date() >= market.endDate && (() => {
-                const autoOutcome: 'YES' | 'NO' | null = (() => {
-                  if (resolution) return resolution.outcome === 'OutcomeA' ? 'YES' : 'NO';
-                  if (!liveStats || !market.metric || market.target === undefined) return null;
-                  const actual =
-                    market.metric === 'viewCount'    ? liveStats.current_views    :
-                    market.metric === 'likeCount'    ? liveStats.current_likes    :
-                    market.metric === 'commentCount' ? liveStats.current_comments : null;
-                  if (actual === null) return null;
-                  return actual >= market.target ? 'YES' : 'NO';
-                })();
-
-                const actualValue = resolution
-                  ? resolution.actual_value
-                  : market.metric === 'viewCount'    ? liveStats?.current_views
-                  : market.metric === 'likeCount'    ? liveStats?.current_likes
-                  : market.metric === 'commentCount' ? liveStats?.current_comments
-                  : undefined;
-
-                const targetValue = resolution ? resolution.threshold : market.target;
-                const won = autoOutcome === 'YES';
-                const isLoading = resolutionLoading && !autoOutcome;
-
-                return (
-                  <div className={cn(
-                    'rounded-xl border bg-card p-4 flex items-center justify-between gap-4',
-                    autoOutcome
-                      ? won ? 'border-success/25' : 'border-danger/25'
-                      : 'border-border'
-                  )}>
-                    <div className="flex items-center gap-3.5 min-w-0">
-                      <div className={cn(
-                        'h-9 w-9 rounded-full flex items-center justify-center shrink-0',
-                        autoOutcome
-                          ? won ? 'bg-success/10' : 'bg-danger/10'
-                          : 'bg-muted/30'
-                      )}>
-                        {isLoading
-                          ? <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" />
-                          : autoOutcome
-                            ? won
-                              ? <CheckCircle2 className="h-4 w-4 text-success" />
-                              : <XCircle className="h-4 w-4 text-danger" />
-                            : <Activity className="h-4 w-4 text-muted-foreground" />
-                        }
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-widest mb-0.5">
-                          Ready to Resolve
-                        </p>
-                        {isLoading ? (
-                          <p className="text-sm text-muted-foreground">Fetching result…</p>
-                        ) : autoOutcome ? (
-                          <p className={cn('text-sm font-semibold', won ? 'text-success' : 'text-danger')}>
-                            {won ? 'YES wins' : 'NO wins'}
-                            {actualValue !== undefined && targetValue !== undefined && (
-                              <span className="text-muted-foreground font-normal ml-2 text-xs">
-                                {formatNumber(actualValue)} of {formatNumber(targetValue)} target
-                              </span>
-                            )}
-                          </p>
-                        ) : (
-                          <p className="text-sm text-muted-foreground">Deadline passed — settle manually</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {autoOutcome ? (
-                      <button
-                        disabled={actionBusy !== null}
-                        onClick={() => handleSetWinner(autoOutcome)}
-                        className={cn(
-                          'shrink-0 px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all',
-                          'disabled:opacity-40 disabled:cursor-not-allowed',
-                          won
-                            ? 'bg-success/15 border border-success/30 text-success hover:bg-success/25'
-                            : 'bg-danger/15 border border-danger/30 text-danger hover:bg-danger/25'
-                        )}
+                    {market.videoId && (
+                      <a
+                        href={market.videoUrl ?? `https://youtube.com/watch?v=${market.videoId}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 text-muted-foreground/50 transition-colors hover:text-red-400 sm:ml-auto"
                       >
-                        {actionBusy === 'set-winner'
-                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Settling…</>
-                          : <><CheckCircle2 className="h-3.5 w-3.5" /> Settle Market</>
-                        }
-                      </button>
-                    ) : (
-                      <div className="flex gap-2 shrink-0">
-                        {(['YES', 'NO', 'NEITHER'] as const).map(o => (
-                          <button
-                            key={o}
-                            disabled={actionBusy !== null}
-                            onClick={() => handleSetWinner(o)}
-                            className={cn(
-                              'px-3 py-1.5 rounded-lg text-[11px] font-semibold border transition-all disabled:opacity-40',
-                              o === 'YES'     ? 'border-success/30 text-success bg-success/10 hover:bg-success/20'
-                              : o === 'NO'   ? 'border-danger/30 text-danger bg-danger/10 hover:bg-danger/20'
-                                             : 'border-border/40 text-muted-foreground bg-muted/20 hover:bg-muted/40'
-                            )}
-                          >
-                            {actionBusy === 'set-winner' ? <Loader2 className="h-3 w-3 animate-spin" /> : o === 'NEITHER' ? 'Neither' : o}
-                          </button>
-                        ))}
-                      </div>
+                        <Youtube className="h-3.5 w-3.5" />
+                        <span className="text-[11px] font-medium">Watch Video</span>
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
                     )}
                   </div>
-                );
-              })()}
+
+                  <div className="mt-3 flex flex-col gap-3 border-t border-border/10 pt-3 dark:border-border/[0.06] sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-widest leading-none text-muted-foreground/40">
+                        {market.isSettled ? 'Resolved' : 'Resolves In'}
+                      </span>
+                      {!market.isSettled && (
+                        <span className="text-[10px] font-mono text-muted-foreground/40">
+                          {market.endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </span>
+                      )}
+                    </div>
+                    <MarketCountdownBlocks targetDate={market.endDate} isSettled={market.isSettled} />
+                  </div>
+                </div>
+
+                {market.isSettled && (() => {
+                  const isYes     = market.winningOutcome === 'YES';
+                  const isNo      = market.winningOutcome === 'NO';
+                  const isNeither = market.winningOutcome === 'NEITHER';
+                  return (
+                    <div className={cn(
+                      'flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 sm:p-5',
+                      isYes ? 'border-success/25' : isNo ? 'border-danger/25' : 'border-border'
+                    )}>
+                      <div className="flex min-w-0 items-start gap-3.5">
+                        <div className={cn(
+                          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+                          isYes ? 'bg-success/10' : isNo ? 'bg-danger/10' : 'bg-muted/30'
+                        )}>
+                          <Trophy className={cn('h-4 w-4', isYes ? 'text-success' : isNo ? 'text-danger' : 'text-muted-foreground')} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="mb-0.5 text-[10px] font-medium uppercase tracking-widest text-muted-foreground/50">
+                            Market Resolved
+                          </p>
+                          <p className={cn('break-words text-sm font-semibold sm:text-base', isYes ? 'text-success' : isNo ? 'text-danger' : 'text-foreground')}>
+                            {isNeither ? 'No winner, proportional return' : `${market.winningOutcome} wins · $1.00 per token`}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={cn(
+                        'shrink-0 rounded-md border px-2 py-1 text-[10px] font-semibold',
+                        isYes ? 'border-success/20 bg-success/10 text-success' :
+                        isNo  ? 'border-danger/20 bg-danger/10 text-danger' :
+                                'border-border bg-muted/30 text-muted-foreground'
+                      )}>
+                        Final
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {userPubkey?.trim() === market.authority?.trim() && !market.isSettled && new Date() >= market.endDate && (() => {
+                  const autoOutcome: 'YES' | 'NO' | null = (() => {
+                    if (resolution) return resolution.outcome === 'OutcomeA' ? 'YES' : 'NO';
+                    if (!liveStats || !market.metric || market.target === undefined) return null;
+                    const actual =
+                      market.metric === 'viewCount'    ? liveStats.current_views    :
+                      market.metric === 'likeCount'    ? liveStats.current_likes    :
+                      market.metric === 'commentCount' ? liveStats.current_comments : null;
+                    if (actual === null) return null;
+                    return actual >= market.target ? 'YES' : 'NO';
+                  })();
+
+                  const actualValue = resolution
+                    ? resolution.actual_value
+                    : market.metric === 'viewCount'    ? liveStats?.current_views
+                    : market.metric === 'likeCount'    ? liveStats?.current_likes
+                    : market.metric === 'commentCount' ? liveStats?.current_comments
+                    : undefined;
+
+                  const targetValue = resolution ? resolution.threshold : market.target;
+                  const won = autoOutcome === 'YES';
+                  const isLoading = resolutionLoading && !autoOutcome;
+
+                  return (
+                    <div className={cn(
+                      'flex flex-col items-start gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between',
+                      autoOutcome
+                        ? won ? 'border-success/25' : 'border-danger/25'
+                        : 'border-border'
+                    )}>
+                      <div className="flex min-w-0 items-start gap-3.5">
+                        <div className={cn(
+                          'flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+                          autoOutcome
+                            ? won ? 'bg-success/10' : 'bg-danger/10'
+                            : 'bg-muted/30'
+                        )}>
+                          {isLoading
+                            ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            : autoOutcome
+                              ? won
+                                ? <CheckCircle2 className="h-4 w-4 text-success" />
+                                : <XCircle className="h-4 w-4 text-danger" />
+                              : <Activity className="h-4 w-4 text-muted-foreground" />
+                          }
+                        </div>
+                        <div className="min-w-0">
+                          <p className="mb-0.5 text-[10px] font-medium uppercase tracking-widest text-muted-foreground/50">
+                            Ready to Resolve
+                          </p>
+                          {isLoading ? (
+                            <p className="text-sm text-muted-foreground">Fetching result…</p>
+                          ) : autoOutcome ? (
+                            <p className={cn('break-words text-sm font-semibold', won ? 'text-success' : 'text-danger')}>
+                              {won ? 'YES wins' : 'NO wins'}
+                              {actualValue !== undefined && targetValue !== undefined && (
+                                <span className="ml-0 block text-xs font-normal text-muted-foreground sm:ml-2 sm:inline">
+                                  {formatNumber(actualValue)} of {formatNumber(targetValue)} target
+                                </span>
+                              )}
+                            </p>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Deadline passed — settle manually</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {autoOutcome ? (
+                        <button
+                          disabled={actionBusy !== null}
+                          onClick={() => handleSetWinner(autoOutcome)}
+                          className={cn(
+                            'flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-xs font-semibold transition-all sm:w-auto',
+                            'disabled:cursor-not-allowed disabled:opacity-40',
+                            won
+                              ? 'border border-success/30 bg-success/15 text-success hover:bg-success/25'
+                              : 'border border-danger/30 bg-danger/15 text-danger hover:bg-danger/25'
+                          )}
+                        >
+                          {actionBusy === 'set-winner'
+                            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Settling…</>
+                            : <><CheckCircle2 className="h-3.5 w-3.5" /> Settle Market</>
+                          }
+                        </button>
+                      ) : (
+                        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                          {(['YES', 'NO', 'NEITHER'] as const).map(o => (
+                            <button
+                              key={o}
+                              disabled={actionBusy !== null}
+                              onClick={() => handleSetWinner(o)}
+                              className={cn(
+                                'flex-1 rounded-lg border px-3 py-1.5 text-[11px] font-semibold transition-all disabled:opacity-40 sm:flex-none',
+                                o === 'YES'     ? 'border-success/30 bg-success/10 text-success hover:bg-success/20'
+                                : o === 'NO'   ? 'border-danger/30 bg-danger/10 text-danger hover:bg-danger/20'
+                                               : 'border-border/40 bg-muted/20 text-muted-foreground hover:bg-muted/40'
+                              )}
+                            >
+                              {actionBusy === 'set-winner' ? <Loader2 className="h-3 w-3 animate-spin" /> : o === 'NEITHER' ? 'Neither' : o}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
 
               {/* Trading Chart */}
               <TradingChartRecharts marketId={marketId} token={selectedTokenType} volume={market.volume} />
 
               {/* ── Market Activity ─────────────────────────────────── */}
               <div className="panel-card overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-border/10 dark:border-border/[0.08]">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-border/10 dark:border-border/[0.08]">
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     {market.isSettled ? 'Trade History' : 'Market Activity'}
                   </h3>
@@ -568,7 +609,7 @@ const MarketDetail = () => {
                 {market.isSettled ? (
                   /* Settled — no order book, just trade history with a closed notice */
                   <>
-                    <div className="flex items-center gap-3 px-4 py-3 border-b border-border/[0.06] bg-muted/10">
+                    <div className="flex items-start gap-3 px-4 py-3 border-b border-border/[0.06] bg-muted/10">
                       <Lock className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
                       <p className="text-xs text-muted-foreground/60">
                         Trading is closed. You can still merge YES and NO token pairs back to USDC.
@@ -582,41 +623,46 @@ const MarketDetail = () => {
                       const maxQty = Math.max(...marketTrades.map(t => t.quantity));
                       return (
                         <>
-                          <div className="grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-2 border-b border-border/[0.08] text-[9px] font-semibold text-muted-foreground/35 uppercase tracking-[0.12em]">
-                            <span>Trade</span>
-                            <span className="text-right pr-8">Price</span>
-                            <span className="text-right w-20 pr-3">Size</span>
-                            <span className="text-right w-10">When</span>
-                          </div>
-                          <div className="max-h-[24rem] overflow-y-auto scrollbar-thin divide-y divide-border/[0.06]">
-                            {marketTrades.map((trade) => {
-                              const isBuy = trade.taker_side === 'Buy';
-                              const isYes = trade.token_type === 'Yes';
-                              const depthPct = (trade.quantity / maxQty) * 48;
-                              const price = toDisplayPrice(trade.price);
-                              const qty = toDisplayQty(trade.quantity);
-                              const sAgo = Math.floor(Date.now() / 1000 - trade.event_timestamp);
-                              const timeStr = sAgo < 60 ? `${sAgo}s` : sAgo < 3600 ? `${Math.floor(sAgo/60)}m` : sAgo < 86400 ? `${Math.floor(sAgo/3600)}h` : `${Math.floor(sAgo/86400)}d`;
-                              return (
-                                <div key={trade.id} className="relative grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-[9px] hover:bg-muted/[0.03] transition-colors group">
-                                  <div className={cn('absolute right-0 inset-y-0 pointer-events-none', isBuy ? 'bg-emerald-500/[0.04]' : 'bg-red-500/[0.04]')} style={{ width: `${depthPct * 0.6}%` }} />
-                                  <div className={cn('absolute left-0 top-[18%] bottom-[18%] w-[2px] rounded-r-full', isBuy ? 'bg-emerald-500/50' : 'bg-red-500/50')} />
-                                  <div className="flex items-center gap-2 z-10">
-                                    <span className={cn('text-[11px] font-bold leading-none', isBuy ? 'text-emerald-400' : 'text-red-400')}>{isBuy ? 'BUY' : 'SELL'}</span>
-                                    <span className={cn('text-[9px] font-semibold px-1.5 py-[2px] rounded-sm', isYes ? 'bg-emerald-500/12 text-emerald-400/80' : 'bg-red-500/12 text-red-400/80')}>{trade.token_type.toUpperCase()}</span>
-                                  </div>
-                                  <div className="text-right pr-8 z-10">
-                                    <span className={cn('font-mono font-semibold text-[13px] tabular-nums', isBuy ? 'text-emerald-400' : 'text-red-400')}>{price.toFixed(1)}<span className="text-[10px] font-normal opacity-50">¢</span></span>
-                                  </div>
-                                  <div className="text-right w-20 pr-3 z-10">
-                                    <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">{qty >= 1000 ? `${(qty/1000).toFixed(1)}K` : qty.toFixed(qty < 10 ? 2 : 0)}</span>
-                                  </div>
-                                  <div className="text-right w-10 z-10">
-                                    <span className="font-mono text-[10px] text-muted-foreground/30 tabular-nums">{timeStr}</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
+                          {renderTradeCards(marketTrades)}
+                          <div className="hidden overflow-x-auto scrollbar-thin sm:block">
+                            <div className="min-w-[320px]">
+                              <div className="grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-2 border-b border-border/[0.08] text-[9px] font-semibold text-muted-foreground/35 uppercase tracking-[0.12em]">
+                                <span>Trade</span>
+                                <span className="text-right pr-8">Price</span>
+                                <span className="text-right w-20 pr-3">Size</span>
+                                <span className="text-right w-10">When</span>
+                              </div>
+                              <div className="max-h-[24rem] overflow-y-auto scrollbar-thin divide-y divide-border/[0.06]">
+                                {marketTrades.map((trade) => {
+                                  const isBuy = trade.taker_side === 'Buy';
+                                  const isYes = trade.token_type === 'Yes';
+                                  const depthPct = (trade.quantity / maxQty) * 48;
+                                  const price = toDisplayPrice(trade.price);
+                                  const qty = toDisplayQty(trade.quantity);
+                                  const sAgo = Math.floor(Date.now() / 1000 - trade.event_timestamp);
+                                  const timeStr = sAgo < 60 ? `${sAgo}s` : sAgo < 3600 ? `${Math.floor(sAgo/60)}m` : sAgo < 86400 ? `${Math.floor(sAgo/3600)}h` : `${Math.floor(sAgo/86400)}d`;
+                                  return (
+                                    <div key={trade.id} className="relative grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-[9px] hover:bg-muted/[0.03] transition-colors group">
+                                      <div className={cn('absolute right-0 inset-y-0 pointer-events-none', isBuy ? 'bg-emerald-500/[0.04]' : 'bg-red-500/[0.04]')} style={{ width: `${depthPct * 0.6}%` }} />
+                                      <div className={cn('absolute left-0 top-[18%] bottom-[18%] w-[2px] rounded-r-full', isBuy ? 'bg-emerald-500/50' : 'bg-red-500/50')} />
+                                      <div className="flex items-center gap-2 z-10">
+                                        <span className={cn('text-[11px] font-bold leading-none', isBuy ? 'text-emerald-400' : 'text-red-400')}>{isBuy ? 'BUY' : 'SELL'}</span>
+                                        <span className={cn('text-[9px] font-semibold px-1.5 py-[2px] rounded-sm', isYes ? 'bg-emerald-500/12 text-emerald-400/80' : 'bg-red-500/12 text-red-400/80')}>{trade.token_type.toUpperCase()}</span>
+                                      </div>
+                                      <div className="text-right pr-8 z-10">
+                                        <span className={cn('font-mono font-semibold text-[13px] tabular-nums', isBuy ? 'text-emerald-400' : 'text-red-400')}>{price.toFixed(1)}<span className="text-[10px] font-normal opacity-50">¢</span></span>
+                                      </div>
+                                      <div className="text-right w-20 pr-3 z-10">
+                                        <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">{qty >= 1000 ? `${(qty/1000).toFixed(1)}K` : qty.toFixed(qty < 10 ? 2 : 0)}</span>
+                                      </div>
+                                      <div className="text-right w-10 z-10">
+                                        <span className="font-mono text-[10px] text-muted-foreground/30 tabular-nums">{timeStr}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
                           </div>
                           <div className="px-4 py-2.5 border-t border-border/[0.08]">
                             <span className="text-[10px] text-muted-foreground/35 tabular-nums">{marketTrades.length} executions</span>
@@ -628,10 +674,10 @@ const MarketDetail = () => {
                 ) : (
                   /* Live — full order book + live trades tabs */
                   <Tabs defaultValue="orderbook" className="w-full">
-                    <div className="px-4 pt-3 pb-0">
-                      <TabsList className="h-8 bg-muted/20 dark:bg-muted/[0.08] p-0.5 rounded-lg border border-border/15 dark:border-border/[0.08] gap-0.5">
-                        <TabsTrigger value="orderbook" className="h-7 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">Order Book</TabsTrigger>
-                        <TabsTrigger value="trades" className="h-7 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                    <div className="px-4 pb-0 pt-3">
+                      <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-border/15 bg-muted/20 p-1 dark:border-border/[0.08] dark:bg-muted/[0.08]">
+                        <TabsTrigger value="orderbook" className="h-8 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">Order Book</TabsTrigger>
+                        <TabsTrigger value="trades" className="h-8 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">
                           Live Trades
                           {marketTrades.length > 0 && (
                             <span className="ml-1.5 text-[9px] px-1.5 py-[1px] rounded-full bg-emerald-500/15 text-emerald-400 font-bold tabular-nums">{marketTrades.length}</span>
@@ -639,7 +685,7 @@ const MarketDetail = () => {
                         </TabsTrigger>
                       </TabsList>
                     </div>
-                    <TabsContent value="orderbook" className="mt-0 p-4 space-y-4">
+                    <TabsContent value="orderbook" className="mt-0 space-y-4 p-3 sm:p-4">
                       <OrderBook marketId={marketIdStr} yesPrice={market.yesPrice} noPrice={market.noPrice} selectedTokenType={selectedTokenType} userPubkey={userPubkey} />
                       {/* <div className="flex items-center gap-3 pt-2">
                         <div className="flex-1 h-px bg-violet-500/15" />
@@ -661,44 +707,49 @@ const MarketDetail = () => {
                         const maxQty = Math.max(...marketTrades.map(t => t.quantity));
                         return (
                           <>
-                            <div className="grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-2 border-b border-border/[0.08] text-[9px] font-semibold text-muted-foreground/35 uppercase tracking-[0.12em]">
-                              <span>Trade</span>
-                              <span className="text-right pr-8">Price</span>
-                              <span className="text-right w-20 pr-3">Size</span>
-                              <span className="text-right w-10">When</span>
+                            {renderTradeCards(marketTrades)}
+                            <div className="hidden overflow-x-auto scrollbar-thin sm:block">
+                              <div className="min-w-[320px]">
+                                <div className="grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-2 border-b border-border/[0.08] text-[9px] font-semibold text-muted-foreground/35 uppercase tracking-[0.12em]">
+                                  <span>Trade</span>
+                                  <span className="text-right pr-8">Price</span>
+                                  <span className="text-right w-20 pr-3">Size</span>
+                                  <span className="text-right w-10">When</span>
+                                </div>
+                              <div className="max-h-[30rem] overflow-y-auto divide-y divide-border/[0.06] scrollbar-thin">
+                                  {marketTrades.map((trade) => {
+                                    const isBuy = trade.taker_side === 'Buy';
+                                    const isYes = trade.token_type === 'Yes';
+                                    const depthPct = (trade.quantity / maxQty) * 48;
+                                    const price = toDisplayPrice(trade.price);
+                                    const qty = toDisplayQty(trade.quantity);
+                                    const sAgo = Math.floor(Date.now() / 1000 - trade.event_timestamp);
+                                    const timeStr = sAgo < 60 ? `${sAgo}s` : sAgo < 3600 ? `${Math.floor(sAgo/60)}m` : sAgo < 86400 ? `${Math.floor(sAgo/3600)}h` : `${Math.floor(sAgo/86400)}d`;
+                                    return (
+                                      <div key={trade.id} className="relative grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-[9px] hover:bg-muted/[0.03] transition-colors group">
+                                        <div className={cn('absolute right-0 inset-y-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity', isBuy ? 'bg-emerald-500/[0.06]' : 'bg-red-500/[0.06]')} style={{ width: `${depthPct}%` }} />
+                                        <div className={cn('absolute right-0 inset-y-0 pointer-events-none', isBuy ? 'bg-emerald-500/[0.04]' : 'bg-red-500/[0.04]')} style={{ width: `${depthPct * 0.6}%` }} />
+                                        <div className={cn('absolute left-0 top-[18%] bottom-[18%] w-[2px] rounded-r-full', isBuy ? 'bg-emerald-500/50' : 'bg-red-500/50')} />
+                                        <div className="flex items-center gap-2 z-10 min-w-0">
+                                          <span className={cn('text-[11px] font-bold leading-none shrink-0', isBuy ? 'text-emerald-400' : 'text-red-400')}>{isBuy ? 'BUY' : 'SELL'}</span>
+                                          <span className={cn('text-[9px] font-semibold px-1.5 py-[2px] rounded-sm leading-none shrink-0', isYes ? 'bg-emerald-500/12 text-emerald-400/80' : 'bg-red-500/12 text-red-400/80')}>{trade.token_type.toUpperCase()}</span>
+                                        </div>
+                                        <div className="text-right pr-8 z-10">
+                                          <span className={cn('font-mono font-semibold text-[13px] tabular-nums', isBuy ? 'text-emerald-400' : 'text-red-400')}>{price.toFixed(1)}<span className="text-[10px] font-normal opacity-50">¢</span></span>
+                                        </div>
+                                        <div className="text-right w-20 pr-3 z-10">
+                                          <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">{qty >= 1000 ? `${(qty/1000).toFixed(1)}K` : qty.toFixed(qty < 10 ? 2 : 0)}</span>
+                                        </div>
+                                        <div className="text-right w-10 z-10">
+                                          <span className="font-mono text-[10px] text-muted-foreground/30 tabular-nums">{timeStr}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
                             </div>
-                            <div className="max-h-[30rem] overflow-y-auto scrollbar-thin divide-y divide-border/[0.06]">
-                              {marketTrades.map((trade) => {
-                                const isBuy = trade.taker_side === 'Buy';
-                                const isYes = trade.token_type === 'Yes';
-                                const depthPct = (trade.quantity / maxQty) * 48;
-                                const price = toDisplayPrice(trade.price);
-                                const qty = toDisplayQty(trade.quantity);
-                                const sAgo = Math.floor(Date.now() / 1000 - trade.event_timestamp);
-                                const timeStr = sAgo < 60 ? `${sAgo}s` : sAgo < 3600 ? `${Math.floor(sAgo/60)}m` : sAgo < 86400 ? `${Math.floor(sAgo/3600)}h` : `${Math.floor(sAgo/86400)}d`;
-                                return (
-                                  <div key={trade.id} className="relative grid grid-cols-[1fr_auto_auto_auto] items-center px-4 py-[9px] hover:bg-muted/[0.03] transition-colors group">
-                                    <div className={cn('absolute right-0 inset-y-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity', isBuy ? 'bg-emerald-500/[0.06]' : 'bg-red-500/[0.06]')} style={{ width: `${depthPct}%` }} />
-                                    <div className={cn('absolute right-0 inset-y-0 pointer-events-none', isBuy ? 'bg-emerald-500/[0.04]' : 'bg-red-500/[0.04]')} style={{ width: `${depthPct * 0.6}%` }} />
-                                    <div className={cn('absolute left-0 top-[18%] bottom-[18%] w-[2px] rounded-r-full', isBuy ? 'bg-emerald-500/50' : 'bg-red-500/50')} />
-                                    <div className="flex items-center gap-2 z-10 min-w-0">
-                                      <span className={cn('text-[11px] font-bold leading-none shrink-0', isBuy ? 'text-emerald-400' : 'text-red-400')}>{isBuy ? 'BUY' : 'SELL'}</span>
-                                      <span className={cn('text-[9px] font-semibold px-1.5 py-[2px] rounded-sm leading-none shrink-0', isYes ? 'bg-emerald-500/12 text-emerald-400/80' : 'bg-red-500/12 text-red-400/80')}>{trade.token_type.toUpperCase()}</span>
-                                    </div>
-                                    <div className="text-right pr-8 z-10">
-                                      <span className={cn('font-mono font-semibold text-[13px] tabular-nums', isBuy ? 'text-emerald-400' : 'text-red-400')}>{price.toFixed(1)}<span className="text-[10px] font-normal opacity-50">¢</span></span>
-                                    </div>
-                                    <div className="text-right w-20 pr-3 z-10">
-                                      <span className="font-mono text-[11px] text-muted-foreground/60 tabular-nums">{qty >= 1000 ? `${(qty/1000).toFixed(1)}K` : qty.toFixed(qty < 10 ? 2 : 0)}</span>
-                                    </div>
-                                    <div className="text-right w-10 z-10">
-                                      <span className="font-mono text-[10px] text-muted-foreground/30 tabular-nums">{timeStr}</span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/[0.08]">
+                            <div className="flex flex-col items-start gap-1.5 px-4 py-2.5 border-t border-border/[0.08] sm:flex-row sm:items-center sm:justify-between">
                               <span className="text-[10px] text-muted-foreground/35 tabular-nums">{marketTrades.length} executions</span>
                               <span className="flex items-center gap-1.5 text-[10px] text-muted-foreground/35">
                                 <span className="inline-block h-1 w-1 rounded-full bg-emerald-500 animate-pulse" />
@@ -715,11 +766,11 @@ const MarketDetail = () => {
 
               {/* ── Info — About + My Orders ────────────────────────────── */}
               <Tabs defaultValue="about" className="w-full">
-                <TabsList className="h-8 bg-muted/20 dark:bg-muted/8 p-0.5 rounded-lg border border-border/15 dark:border-border/8 gap-0.5">
-                  <TabsTrigger value="about" className="h-7 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 rounded-lg border border-border/15 bg-muted/20 p-1 dark:border-border/8 dark:bg-muted/8">
+                  <TabsTrigger value="about" className="h-8 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">
                     About
                   </TabsTrigger>
-                  <TabsTrigger value="my-orders" className="h-7 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">
+                  <TabsTrigger value="my-orders" className="h-8 px-3 text-[11px] font-medium rounded-md data-[state=active]:bg-background data-[state=active]:shadow-sm">
                     My Orders
                   </TabsTrigger>
                 </TabsList>
@@ -764,9 +815,9 @@ const MarketDetail = () => {
               </Tabs>
             </div>
 
-            {/* Right Column */}
-            <div className="lg:col-span-4">
-              <div className="sticky top-20 space-y-6">
+            {/* Right Column — trading panel */}
+            <div className="order-2 min-w-0 lg:col-span-4">
+              <div className="min-w-0 space-y-5 lg:sticky lg:top-20 lg:space-y-6">
                 <TradingPanelNew
                   marketId={marketIdStr}
                   yesPrice={market.yesPrice}
@@ -792,7 +843,7 @@ const MarketDetail = () => {
 
                 {/* ── Creator Actions Panel — Close Market only ───────── */}
                 {userPubkey?.trim() === market.authority?.trim() && market.isSettled && (
-                  <div className="panel-card p-5 space-y-3">
+                  <div className="panel-card space-y-3 p-4 sm:p-5">
                     <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Creator Actions
                     </h4>
@@ -817,7 +868,7 @@ const MarketDetail = () => {
 
                 {/* ── Claim Rewards — any user when winner is set ──────── */}
                 {market.isSettled && market.winningOutcome && market.winningOutcome !== 'NEITHER' && (
-                  <div className="panel-card p-5 space-y-3">
+                  <div className="panel-card space-y-3 p-4 sm:p-5">
                     <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                       <Trophy className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                       <span className="text-xs text-emerald-400 font-semibold">
@@ -839,9 +890,9 @@ const MarketDetail = () => {
                 )}
 
                 {/* Market Info */}
-                <div className="panel-card p-5 space-y-4">
+                <div className="panel-card space-y-4 p-4 sm:p-5">
                   <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Market Info</h4>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div className="stat-box">
                       <div className="text-[10px] text-muted-foreground mb-0.5">Volume</div>
                       <div className="text-sm font-semibold font-mono">{formatVolume(market.volume)}</div>

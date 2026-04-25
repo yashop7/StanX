@@ -123,10 +123,6 @@ export const MarketCard = ({ market, featured = false, compact = false }: Market
           {/* Meta */}
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1">
-              <LogoMark className="h-3 w-3" />
-              {formatVolume(market.volume)}
-            </span>
-            <span className="flex items-center gap-1">
               <Users className="h-3 w-3" />
               {market.participants.toLocaleString()}
             </span>

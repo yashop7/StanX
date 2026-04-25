@@ -30,6 +30,8 @@ function RollingNum({ value, className }: { value: string; className?: string })
   useEffect(() => {
     if (value === curr) return;
     clearTimeout(timer.current);
+    // This local animation state intentionally updates in sequence when digits change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPrev(curr);
     setCurr(value);
     timer.current = setTimeout(() => setPrev(null), 240);
@@ -153,14 +155,14 @@ export function MarketCountdownBlocks({ targetDate, isSettled }: MarketCountdown
   ];
 
   return (
-    <div className="flex items-end gap-1.5">
+    <div className="flex flex-wrap items-end justify-start gap-1.5 sm:flex-nowrap sm:justify-end">
       {segments.map(({ value, label }, i) => (
         <div key={label} className="flex flex-col items-center gap-[3px]">
           {/* Separator dot between segments (not after last) */}
           <div className="relative flex items-center">
             <div
               className={[
-                'min-w-[2rem] h-[1.75rem] flex items-center justify-center px-1.5 rounded-md border',
+                'flex h-[1.75rem] min-w-[2rem] items-center justify-center rounded-md border px-1.5',
                 'font-mono text-[13px] font-semibold tabular-nums tracking-tight',
                 urgent
                   ? 'bg-red-500/10 border-red-500/20 text-red-400'

@@ -22,7 +22,7 @@ import {
   PRICE_SCALE,
 } from "@/lib/blockchain/market";
 import { classifyTxError, isUserRejection, extractSignature } from "@/lib/blockchain/verify-tx";
-import { SOLANA_NETWORK } from "@/lib/constants";
+import { SOLANA_NETWORK, USDC_FAUCET_URL } from "@/lib/constants";
 
 interface TradingPanelNewProps {
   marketId: string;
@@ -144,9 +144,19 @@ export const TradingPanelNew = ({
         ? amountInput * (limitPriceNumForCheck / 100)
         : amountInput;
       if (action === "buy" && usdcNeededForBuy > balance) {
-        toast.error("Insufficient USDC balance.", {
-          description: `You need $${usdcNeededForBuy.toFixed(2)} but have $${balance.toLocaleString()}.`,
-        });
+        if (balance === 0) {
+          toast.error("No USDC in your wallet.", {
+            description: "You need devnet USDC to place a buy order.",
+            action: {
+              label: "Get free USDC →",
+              onClick: () => window.open(USDC_FAUCET_URL, "_blank"),
+            },
+          });
+        } else {
+          toast.error("Insufficient USDC balance.", {
+            description: `You need $${usdcNeededForBuy.toFixed(2)} but have $${balance.toLocaleString()}.`,
+          });
+        }
         return;
       }
       if (action === "sell" && amountInput > tokenBalance) {
@@ -400,14 +410,14 @@ export const TradingPanelNew = ({
   ];
 
   return (
-    <div className="panel-card overflow-hidden">
+    <div className="panel-card min-w-0 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-border">
+      <div className="flex flex-col items-start gap-2 border-b border-border px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Place Order
         </h3>
         {/* price pills */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-success/10 text-success">
             Y {(yesPrice * 100).toFixed(0)}¢
           </span>
@@ -417,7 +427,7 @@ export const TradingPanelNew = ({
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="space-y-4 p-4">
         {/* ── Market Settled banner ── */}
         {isSettled && (
           <div className="space-y-4">
@@ -443,7 +453,7 @@ export const TradingPanelNew = ({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-muted/20 border border-border/30 text-xs text-muted-foreground">
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-muted/20 border border-border/30 text-xs text-muted-foreground">
               <Lock className="h-3.5 w-3.5 shrink-0" />
               <span>New orders and splitting are disabled. You can still merge token pairs back into USDC.</span>
             </div>
@@ -467,29 +477,29 @@ export const TradingPanelNew = ({
         {!isSettled && (<>
         {/* Indexer offline banner */}
         {!indexerOk && (
-          <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
             <span>System is syncing, trading is temporarily paused</span>
           </div>
         )}
 
         {/* Tab bar — underline style */}
-        <div className="flex border-b border-border">
-          {orderTypes.map((type) => (
-            <button
-              key={type.value}
-              onClick={() => setOrderType(type.value)}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-all duration-150 border-b-2 -mb-px",
-                orderType === type.value
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <span>{type.icon}</span>
-              <span>{type.label}</span>
-            </button>
-          ))}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-5 sm:border-b sm:border-border">
+            {orderTypes.map((type) => (
+              <button
+                key={type.value}
+                onClick={() => setOrderType(type.value)}
+                className={cn(
+                  "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-[11px] font-medium transition-all duration-150 sm:rounded-none sm:border-x-0 sm:border-t-0 sm:px-0 sm:text-xs",
+                  orderType === type.value
+                    ? "border-border bg-muted/30 text-foreground sm:border-foreground sm:bg-transparent"
+                    : "border-border/40 text-muted-foreground hover:border-border hover:text-foreground sm:border-transparent"
+                )}
+              >
+                <span>{type.icon}</span>
+                <span>{type.label}</span>
+              </button>
+            ))}
         </div>
 
         {/* Market & Limit Order Content */}
@@ -505,7 +515,7 @@ export const TradingPanelNew = ({
                   onTokenTypeChange?.("yes");
                 }}
                 className={cn(
-                  "py-3 rounded-lg border text-left px-3.5 transition-all duration-150",
+                  "py-3.5 rounded-lg border text-left px-3.5 transition-all duration-150",
                   tokenType === "yes"
                     ? "bg-success/8 border-success/30"
                     : "bg-muted/20 border-border hover:border-success/20"
@@ -536,7 +546,7 @@ export const TradingPanelNew = ({
                   onTokenTypeChange?.("no");
                 }}
                 className={cn(
-                  "py-3 rounded-lg border text-left px-3.5 transition-all duration-150",
+                  "py-3.5 rounded-lg border text-left px-3.5 transition-all duration-150",
                   tokenType === "no"
                     ? "bg-danger/8 border-danger/30"
                     : "bg-muted/20 border-border hover:border-danger/20"
@@ -565,7 +575,7 @@ export const TradingPanelNew = ({
               <button
                 onClick={() => setAction("buy")}
                 className={cn(
-                  "flex-1 py-2 rounded-md text-xs font-semibold transition-all duration-150",
+                  "flex-1 py-2.5 rounded-md text-xs font-semibold transition-all duration-150",
                   action === "buy"
                     ? "bg-success text-white shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -576,7 +586,7 @@ export const TradingPanelNew = ({
               <button
                 onClick={() => setAction("sell")}
                 className={cn(
-                  "flex-1 py-2 rounded-md text-xs font-semibold transition-all duration-150",
+                  "flex-1 py-2.5 rounded-md text-xs font-semibold transition-all duration-150",
                   action === "sell"
                     ? "bg-danger text-white shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
@@ -609,7 +619,7 @@ export const TradingPanelNew = ({
 
             {/* Amount Input */}
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label
                   htmlFor="amount"
                   className="text-xs text-muted-foreground font-medium"
@@ -665,7 +675,7 @@ export const TradingPanelNew = ({
                   </p>
                 )}
 
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                 {(isLimit
                   ? ["1", "5", "10", "25"]
                   : ["10", "25", "50", "100"]
@@ -674,7 +684,7 @@ export const TradingPanelNew = ({
                     key={val}
                     onClick={() => setAmount(val)}
                     className={cn(
-                      "py-1.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
+                      "py-2.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
                       amount === val
                         ? action === "buy"
                           ? "border-success/50 bg-success/10 text-success"
@@ -691,22 +701,22 @@ export const TradingPanelNew = ({
             {/* Order receipt */}
             <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
               {/* Row 1: shares / USDC cost */}
-              <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
+              <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-muted-foreground">
                   {action === "buy" ? "Shares" : "Shares sold"}
                 </span>
-                <span className="font-mono font-medium">
+                <span className="break-all font-mono font-medium sm:text-right">
                   {shares > 0 ? shares.toFixed(4) : "—"}{" "}
                   {tokenType.toUpperCase()}
                 </span>
               </div>
 
               {/* Row 2: USDC spent / received */}
-              <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
+              <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-muted-foreground">
                   {action === "buy" ? "USDC spent" : "USDC received"}
                 </span>
-                <span className="font-mono font-medium">
+                <span className="break-all font-mono font-medium sm:text-right">
                   $
                   {action === "buy"
                     ? usdcCost.toFixed(2)
@@ -717,7 +727,7 @@ export const TradingPanelNew = ({
               </div>
 
               {/* Row 3: max payout */}
-              <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
+              <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger className="flex items-center gap-1 text-muted-foreground">
@@ -728,19 +738,19 @@ export const TradingPanelNew = ({
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
-                <span className="font-mono font-medium">
+                <span className="break-all font-mono font-medium sm:text-right">
                   ${potentialWin.toFixed(2)}
                 </span>
               </div>
 
               {/* Row 4: profit */}
-              <div className="flex justify-between items-center px-3.5 py-2.5">
+              <div className="flex flex-col gap-1 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-xs text-muted-foreground">
                   Profit if correct
                 </span>
                 <span
                   className={cn(
-                    "text-sm font-bold font-mono",
+                    "break-all text-sm font-bold font-mono sm:text-right",
                     profit >= 0 ? "text-success" : "text-danger"
                   )}
                 >
@@ -754,7 +764,7 @@ export const TradingPanelNew = ({
               onClick={handleTrade}
               disabled={!indexerOk || !amount || parseFloat(amount) <= 0 || isSending}
               className={cn(
-                "w-full py-3 rounded-lg font-semibold text-sm text-white transition-all duration-150",
+                "w-full py-3.5 rounded-lg font-semibold text-sm text-white transition-all duration-150",
                 "disabled:opacity-40 disabled:cursor-not-allowed",
                 action === "buy"
                   ? "bg-success hover:brightness-110 shadow-sm shadow-success/20"
@@ -767,7 +777,7 @@ export const TradingPanelNew = ({
                   ? action === "buy"
                     ? "Buying…"
                     : "Selling…"
-                  : `${action === "buy" ? "Buy" : "Sell"} ${tokenType.toUpperCase()}${amount ? ` — ${action === "buy" ? "$" + amount : amount + " tokens"}` : ""}`}
+                  : `${action === "buy" ? "Buy" : "Sell"} ${tokenType.toUpperCase()}`}
               </span>
             </button>
           </>
@@ -811,7 +821,7 @@ export const TradingPanelNew = ({
 
               {/* Amount input */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label htmlFor="merge-amount" className="text-[11px] text-muted-foreground font-medium">
                     Pairs to Merge
                   </Label>
@@ -831,13 +841,13 @@ export const TradingPanelNew = ({
                   onWheel={(e) => e.currentTarget.blur()}
                   className="h-11 bg-muted/30 border-border rounded-lg font-mono text-sm"
                 />
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                   {["1", "5", "10", "25"].map((val) => (
                     <button
                       key={val}
                       onClick={() => setMergeAmount(val)}
                       className={cn(
-                        "py-1.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
+                        "py-2.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
                         mergeAmount === val
                           ? "border-amber-500/50 bg-amber-500/10 text-amber-400"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
@@ -851,22 +861,22 @@ export const TradingPanelNew = ({
 
               {/* Receipt */}
               <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
-                <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
+                <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-muted-foreground">YES burned</span>
-                  <span className="font-mono font-medium">
+                  <span className="break-all font-mono font-medium sm:text-right">
                     {mergeAmountNum > 0 ? `${mergeAmountNum.toFixed(4)} YES` : "-"}
                   </span>
                 </div>
-                <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
+                <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-muted-foreground">NO burned</span>
-                  <span className="font-mono font-medium">
+                  <span className="break-all font-mono font-medium sm:text-right">
                     {mergeAmountNum > 0 ? `${mergeAmountNum.toFixed(4)} NO` : "-"}
                   </span>
                 </div>
-                <div className="flex justify-between items-center px-3.5 py-2.5">
+                <div className="flex flex-col gap-1 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between">
                   <span className="text-xs text-muted-foreground">USDC received</span>
                   <span className={cn(
-                    "text-sm font-bold font-mono",
+                    "break-all text-sm font-bold font-mono sm:text-right",
                     usdcBack > 0 ? "text-amber-400" : "text-muted-foreground/40"
                   )}>
                     {usdcBack > 0 ? `$${usdcBack.toFixed(2)}` : "—"}
@@ -879,7 +889,7 @@ export const TradingPanelNew = ({
                 onClick={handleMerge}
                 disabled={!indexerOk || !hasEnough || isSending}
                 className={cn(
-                  "w-full py-3 rounded-lg font-semibold text-sm text-white transition-all duration-150",
+                  "w-full py-3.5 rounded-lg font-semibold text-sm text-white transition-all duration-150",
                   "disabled:opacity-40 disabled:cursor-not-allowed",
                   "bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-600/20"
                 )}
@@ -929,7 +939,7 @@ export const TradingPanelNew = ({
 
               {/* Amount input */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <Label htmlFor="split-amount" className="text-[11px] text-muted-foreground font-medium">
                     Amount (USDC)
                   </Label>
@@ -952,13 +962,13 @@ export const TradingPanelNew = ({
                     className="pl-7 h-11 bg-muted/30 border-border rounded-lg font-mono text-sm"
                   />
                 </div>
-                <div className="grid grid-cols-4 gap-1.5">
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                   {["10", "25", "50", "100"].map((val) => (
                     <button
                       key={val}
                       onClick={() => setSplitAmount(val)}
                       className={cn(
-                        "py-1.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
+                        "py-2.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
                         splitAmount === val
                           ? "border-violet-500/50 bg-violet-500/10 text-violet-400"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
@@ -972,17 +982,17 @@ export const TradingPanelNew = ({
 
               {/* Receipt */}
               <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
-                <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
-                  <span className="text-muted-foreground">Rate</span>
-                  <span className="font-mono font-medium">1 USDC = 1 YES + 1 NO</span>
+                <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-muted-foreground shrink-0">Rate</span>
+                  <span className="font-mono font-medium sm:ml-2 sm:text-right">1 USDC = 1 YES + 1 NO</span>
                 </div>
-                <div className="flex justify-between items-center px-3.5 py-2.5 text-xs">
-                  <span className="text-muted-foreground">USDC locked</span>
-                  <span className="font-mono font-medium">
+                <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-muted-foreground shrink-0">USDC locked</span>
+                  <span className="break-all font-mono font-medium sm:ml-2 sm:text-right">
                     {splitNum > 0 ? `$${splitNum.toFixed(2)}` : "—"}
                   </span>
                 </div>
-                <div className="flex justify-between items-center px-3.5 py-2.5">
+                <div className="flex flex-col gap-1 px-3.5 py-2.5">
                   <span className="text-xs text-muted-foreground">You receive</span>
                   <span className={cn(
                     "text-sm font-bold font-mono",
@@ -998,7 +1008,7 @@ export const TradingPanelNew = ({
                 onClick={handleSplit}
                 disabled={!indexerOk || !hasEnough || isSending}
                 className={cn(
-                  "w-full py-3 rounded-lg font-semibold text-sm text-white transition-all duration-150",
+                  "w-full py-3.5 rounded-lg font-semibold text-sm text-white transition-all duration-150",
                   "disabled:opacity-40 disabled:cursor-not-allowed",
                   "bg-violet-500 hover:brightness-110 shadow-sm shadow-violet-500/20"
                 )}

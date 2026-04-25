@@ -292,3 +292,49 @@ export async function classifyTxError(
   const rawMsg = err instanceof Error ? err.message : "Unknown error";
   return { kind: "failed", reason: cleanErrorMessage(rawMsg) };
 }
+
+/**
+ * Poll `getSignatureStatuses` until the transaction is confirmed, failed, or
+ * the timeout is reached. Returns a discriminated union so callers can handle
+ * each case without ambiguity.
+ *
+ * Use this instead of waiting for useSendTransaction / sendAndConfirmTransaction
+ * to time out — those throw even when the tx actually landed.
+ *
+ * @param sig    - base58 transaction signature (grab with getSignatureFromTransaction)
+ * @param maxMs  - maximum wait time in milliseconds (default 75 000 ms / 75 s)
+ */
+export async function pollForConfirmation(
+  sig: string,
+  maxMs = 75_000,
+): Promise<
+  | { result: "confirmed"; slot: number }
+  | { result: "failed"; err: unknown }
+  | { result: "timeout" }
+> {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 2_000));
+    try {
+      const res = await Promise.race([
+        rpc.getSignatureStatuses([sig as never]).send(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("rpc status timeout")), 6_000),
+        ),
+      ]);
+      const status = res.value[0];
+      if (!status) continue; // not yet seen by this RPC node
+      if (status.err) return { result: "failed", err: status.err };
+      if (
+        status.confirmationStatus === "confirmed" ||
+        status.confirmationStatus === "finalized"
+      ) {
+        return { result: "confirmed", slot: Number(status.slot) };
+      }
+      // status.confirmationStatus === "processed" — keep polling
+    } catch {
+      // RPC error / timeout — just retry
+    }
+  }
+  return { result: "timeout" };
+}

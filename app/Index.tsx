@@ -2,6 +2,7 @@
 
  import { useState, useEffect, useCallback } from 'react';
  import { Header } from '@/components/Header';
+ import { FaucetBanner } from '@/components/FaucetBanner';
  import { Footer } from '@/components/Footer';
  import { MarketCard } from '@/components/MarketCard';
  import { MarketCardSkeleton } from '@/components/MarketCardSkeleton';
@@ -57,7 +58,8 @@
    return (
      <div className="min-h-screen flex flex-col bg-background">
        <Header />
-       
+       <FaucetBanner />
+
        <PageTransition>
          <main className="flex-1">
            {/* Hero Section */}

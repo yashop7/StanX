@@ -26,28 +26,28 @@ export const MarketSwitcher = ({ markets, currentMarketId }: MarketSwitcherProps
     .slice(0, 6);
 
   return (
-    <div className="panel-card overflow-hidden">
+    <div className="panel-card min-w-0 overflow-hidden">
       {/* Header */}
       <div className="panel-header">
-        <h3 className="text-lg font-semibold leading-none">Quick Access</h3>
-        <p className="text-sm text-muted-foreground mt-1.5">Switch between markets</p>
+        <h3 className="text-base font-semibold leading-none sm:text-lg">Quick Access</h3>
+        <p className="mt-1.5 text-xs text-muted-foreground sm:text-sm">Switch between markets</p>
       </div>
 
       {/* Content */}
-      <div className="p-5 space-y-2">
+      <div className="space-y-2 p-4 sm:p-5">
         {quickAccessMarkets.map((market) => (
           <Button
             key={market.marketId}
             variant="ghost"
-            className="w-full justify-start h-auto p-3 text-left hover:bg-muted/50 rounded-xl"
+            className="h-auto w-full justify-start rounded-xl p-3 text-left hover:bg-muted/50"
             onClick={() => router.push(`/market/${market.marketId}`)}
           >
-            <div className="flex-1 min-w-0 space-y-1">
-              <div className="font-medium truncate text-sm leading-tight">
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="truncate text-sm font-medium leading-tight">
                 {market.question}
               </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-xs h-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary" className="h-5 text-xs">
                   {market.category}
                 </Badge>
                 <span className="text-xs text-muted-foreground">

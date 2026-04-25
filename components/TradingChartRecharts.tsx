@@ -237,21 +237,21 @@ export const TradingChartRecharts = ({
   );
 
   return (
-    <div className="panel-card overflow-hidden">
+    <div className="panel-card min-w-0 overflow-hidden">
       {/* ── Header ─────────────────────────────────────────────────────── */}
-      <div className="px-5 pt-5 pb-3">
-        <div className="flex items-start justify-between gap-2">
+      <div className="px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
+        <div className="flex items-start justify-between gap-3">
           <div>
             {/* Price */}
-            <div className="flex items-baseline gap-2">
-              <span className="text-[2.4rem] font-bold tabular-nums tracking-tight leading-none text-foreground">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="text-[2rem] font-bold leading-none tracking-tight text-foreground tabular-nums sm:text-[2.4rem]">
                 {current.toFixed(1)}
               </span>
               <span className="text-base text-muted-foreground/50 font-mono leading-none mb-0.5">¢</span>
 
               {/* Change badge */}
               {hasRealData && (
-                <span className={`flex items-center gap-1 text-sm font-semibold tabular-nums leading-none ${isUp ? "text-emerald-400" : "text-red-400"}`}>
+                  <span className={`flex items-center gap-1 text-xs font-semibold leading-none tabular-nums sm:text-sm ${isUp ? "text-emerald-400" : "text-red-400"}`}>
                   {isUp
                     ? <TrendingUp  className="h-3.5 w-3.5" />
                     : <TrendingDown className="h-3.5 w-3.5" />
@@ -283,7 +283,7 @@ export const TradingChartRecharts = ({
       </div>
 
       {/* ── Chart ──────────────────────────────────────────────────────────── */}
-      <div className="h-[280px] relative">
+      <div className="relative h-[240px] sm:h-[280px]">
         {/* Empty state — shown when loading completes but no data for this period */}
         {!isLoading && !hasRealData && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none z-10">
@@ -373,7 +373,7 @@ export const TradingChartRecharts = ({
       </div>
 
       {/* ── Footer: volume (left) + period selector (right) ──────────────── */}
-      <div className="flex items-center justify-between px-5 py-3 border-t border-border/[0.08]">
+      <div className="flex flex-col gap-3 border-t border-border/[0.08] px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         {/* Volume */}
         <span className="text-[11px] text-muted-foreground/35 font-mono">
           {volume != null && volume > 0
@@ -383,12 +383,12 @@ export const TradingChartRecharts = ({
         </span>
 
         {/* Period selector — pill tabs */}
-        <div className="flex items-center gap-0.5 bg-muted/20 border border-border/15 rounded-lg p-0.5">
+        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border/15 bg-muted/20 p-0.5">
           {PERIODS.map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+              className={`min-w-[44px] px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
                 period === p
                   ? "bg-background text-foreground shadow-sm border border-border/20"
                   : "text-muted-foreground/45 hover:text-muted-foreground/80 hover:bg-muted/30"

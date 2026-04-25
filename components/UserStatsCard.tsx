@@ -89,13 +89,11 @@ export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint, isSettl
 
   if (!session) return null;
 
-  const yesPct = yesHeld + noHeld > 0 ? (yesHeld / (yesHeld + noHeld)) * 100 : 50;
-
   return (
-    <div className="panel-card overflow-hidden">
+    <div className="panel-card min-w-0 overflow-hidden">
       {/* Header */}
-      <div className="panel-header flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="panel-header flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             Your Position
           </h3>
@@ -157,46 +155,46 @@ export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint, isSettl
 
           {/* ── Protocol stats breakdown ─────────────────────── */}
           {stats && (
-            <div className="rounded-lg border border-border overflow-hidden">
-              {/* Column headers */}
-              <div className="grid grid-cols-3 px-3 py-2 bg-muted/20 border-b border-border">
-                <span className="text-[10px] font-medium text-muted-foreground/60"></span>
-                <span className="text-[10px] font-semibold text-success text-right">Claimable</span>
-                <span className="text-[10px] font-semibold text-muted-foreground/60 text-right">Locked</span>
-              </div>
+            <div className="overflow-hidden rounded-lg border border-border">
+                {/* Column headers */}
+                <div className="grid grid-cols-3 gap-2 border-b border-border bg-muted/20 px-2.5 py-2 sm:px-3">
+                  <span className="text-[10px] font-medium text-muted-foreground/60"></span>
+                  <span className="text-right text-[10px] font-semibold text-success">Claimable</span>
+                  <span className="text-right text-[10px] font-semibold text-muted-foreground/60">Locked</span>
+                </div>
 
-              {/* YES row */}
-              <div className="grid grid-cols-3 items-center px-3 py-2.5 border-b border-border/50">
-                <span className="text-xs font-semibold text-success">YES</span>
-                <span className={cn('text-xs font-mono text-right', stats.claimableYes > 0 ? 'text-success' : 'text-muted-foreground/40')}>
-                  {fmt(stats.claimableYes)}
-                </span>
-                <span className={cn('text-xs font-mono text-right', stats.lockedYes > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
-                  {fmt(stats.lockedYes)}
-                </span>
-              </div>
+                {/* YES row */}
+                <div className="grid grid-cols-3 items-center gap-2 border-b border-border/50 px-2.5 py-2.5 sm:px-3">
+                  <span className="text-xs font-semibold text-success">YES</span>
+                  <span className={cn('break-all text-right text-[11px] font-mono sm:text-xs', stats.claimableYes > 0 ? 'text-success' : 'text-muted-foreground/40')}>
+                    {fmt(stats.claimableYes)}
+                  </span>
+                  <span className={cn('break-all text-right text-[11px] font-mono sm:text-xs', stats.lockedYes > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
+                    {fmt(stats.lockedYes)}
+                  </span>
+                </div>
 
-              {/* NO row */}
-              <div className="grid grid-cols-3 items-center px-3 py-2.5 border-b border-border/50">
-                <span className="text-xs font-semibold text-danger">NO</span>
-                <span className={cn('text-xs font-mono text-right', stats.claimableNo > 0 ? 'text-success' : 'text-muted-foreground/40')}>
-                  {fmt(stats.claimableNo)}
-                </span>
-                <span className={cn('text-xs font-mono text-right', stats.lockedNo > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
-                  {fmt(stats.lockedNo)}
-                </span>
-              </div>
+                {/* NO row */}
+                <div className="grid grid-cols-3 items-center gap-2 border-b border-border/50 px-2.5 py-2.5 sm:px-3">
+                  <span className="text-xs font-semibold text-danger">NO</span>
+                  <span className={cn('break-all text-right text-[11px] font-mono sm:text-xs', stats.claimableNo > 0 ? 'text-success' : 'text-muted-foreground/40')}>
+                    {fmt(stats.claimableNo)}
+                  </span>
+                  <span className={cn('break-all text-right text-[11px] font-mono sm:text-xs', stats.lockedNo > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
+                    {fmt(stats.lockedNo)}
+                  </span>
+                </div>
 
-              {/* USDC row */}
-              <div className="grid grid-cols-3 items-center px-3 py-2.5">
-                <span className="text-xs font-semibold text-muted-foreground">USDC</span>
-                <span className={cn('text-xs font-mono text-right', stats.claimableCollateral > 0 ? 'text-success' : 'text-muted-foreground/40')}>
-                  {fmtUSDC(stats.claimableCollateral)}
-                </span>
-                <span className={cn('text-xs font-mono text-right', stats.lockedCollateral > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
-                  {fmtUSDC(stats.lockedCollateral)}
-                </span>
-              </div>
+                {/* USDC row */}
+                <div className="grid grid-cols-3 items-center gap-2 px-2.5 py-2.5 sm:px-3">
+                  <span className="text-xs font-semibold text-muted-foreground">USDC</span>
+                  <span className={cn('break-all text-right text-[11px] font-mono sm:text-xs', stats.claimableCollateral > 0 ? 'text-success' : 'text-muted-foreground/40')}>
+                    {fmtUSDC(stats.claimableCollateral)}
+                  </span>
+                  <span className={cn('break-all text-right text-[11px] font-mono sm:text-xs', stats.lockedCollateral > 0 ? 'text-foreground' : 'text-muted-foreground/40')}>
+                    {fmtUSDC(stats.lockedCollateral)}
+                  </span>
+                </div>
             </div>
           )}
           

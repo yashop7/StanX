@@ -24,6 +24,11 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -31,7 +36,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body className={`${geist.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning>
+      <body className={`${geist.variable} ${geistMono.variable} overflow-x-hidden antialiased`} suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

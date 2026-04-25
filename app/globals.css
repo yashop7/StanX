@@ -448,6 +448,13 @@
    UTILITIES & ACCESSIBILITY
    =================================== */
 
+/* Prevent iOS from auto-zooming on input focus (requires font-size ≥ 16px) */
+@media screen and (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;

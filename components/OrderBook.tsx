@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { useOrderbookWs } from '@/hooks/use-orderbook-ws';
 import { toDisplayPrice, toDisplayQty } from '@/lib/api/backend';
@@ -146,12 +146,10 @@ export const OrderBook = ({
 
   const maxTotal = Math.max(...asks.map((a) => a.total), ...bids.map((b) => b.total), 1);
 
-  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
-
   return (
-    <div className="overflow-hidden">
+    <div className="min-w-0 overflow-hidden">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/10 dark:border-border/8">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/10 px-3 py-3 dark:border-border/8 sm:px-4">
         <div className="flex items-center gap-2">
           <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/60">
             Order Book
@@ -167,10 +165,10 @@ export const OrderBook = ({
             {selectedTokenType.toUpperCase()}
           </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <StatusDot status={status} hasData={!!orderbook} />
           {orderbook && (
-            <span className="text-[10px] font-mono text-muted-foreground/25 tabular-nums">
+            <span className="hidden sm:inline text-[10px] font-mono text-muted-foreground/25 tabular-nums">
               slot {orderbook.slot.toLocaleString()}
             </span>
           )}
@@ -218,16 +216,16 @@ export const OrderBook = ({
           ) : (
           <>
           {/* Column headers */}
-          <div className="grid grid-cols-[1fr_auto_auto] items-center px-4 py-2 border-b border-border/8 text-[10px] font-semibold text-muted-foreground/40 uppercase tracking-widest">
+          <div className="grid grid-cols-[minmax(0,1fr)_60px_52px] items-center border-b border-border/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/40 sm:grid-cols-[1fr_80px_64px] sm:px-4">
             <span>Price (¢)</span>
-            <span className="text-right w-20 pr-3">Size</span>
-            <span className="text-right w-16">Total</span>
+            <span className="pr-2 text-right sm:pr-3">Size</span>
+            <span className="text-right">Total</span>
           </div>
 
           {/* ── Asks (reversed so best ask is closest to mid) ── */}
           <div>
             {asks.length === 0 && (
-              <div className="px-4 py-3 text-[10px] font-mono text-muted-foreground/25 text-center">
+              <div className="px-3 py-3 text-center font-mono text-[10px] text-muted-foreground/25 sm:px-4">
                 No asks
               </div>
             )}
@@ -240,9 +238,7 @@ export const OrderBook = ({
                 return (
                   <div
                     key={key}
-                    onMouseEnter={() => setHoveredRow(key)}
-                    onMouseLeave={() => setHoveredRow(null)}
-                    className="relative grid grid-cols-[1fr_auto_auto] items-center px-4 py-1.5 transition-colors group cursor-pointer"
+                    className="group relative grid grid-cols-[minmax(0,1fr)_60px_52px] items-center px-3 py-1.5 transition-colors cursor-pointer sm:grid-cols-[1fr_80px_64px] sm:px-4"
                   >
                     {/* Always-on subtle depth wash */}
                     <div
@@ -266,10 +262,10 @@ export const OrderBook = ({
                         </span>
                       )}
                     </span>
-                    <span className="relative z-10 text-right w-20 pr-3 font-mono text-xs text-muted-foreground/60 tabular-nums">
+                    <span className="relative z-10 pr-2 text-right font-mono text-xs tabular-nums text-muted-foreground/60 sm:pr-3">
                       {formatSize(ask.size)}
                     </span>
-                    <span className="relative z-10 text-right w-16 font-mono text-[10px] text-muted-foreground/30 tabular-nums">
+                    <span className="relative z-10 text-right font-mono text-[10px] tabular-nums text-muted-foreground/30">
                       {formatSize(ask.total)}
                     </span>
                   </div>
@@ -278,8 +274,8 @@ export const OrderBook = ({
           </div>
 
           {/* ── Mid price & spread ── */}
-          <div className="px-4 py-1.5 border-y border-border/8 bg-muted/4">
-            <div className="flex items-center justify-between">
+          <div className="border-y border-border/8 bg-muted/4 px-3 py-1.5 sm:px-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-baseline gap-2">
                 <span className="text-base font-bold font-mono tabular-nums tracking-tight">
                   {midPrice.toFixed(2)}
@@ -305,7 +301,7 @@ export const OrderBook = ({
           {/* ── Bids ── */}
           <div>
             {bids.length === 0 && (
-              <div className="px-4 py-3 text-[10px] font-mono text-muted-foreground/25 text-center">
+              <div className="px-3 py-3 text-center font-mono text-[10px] text-muted-foreground/25 sm:px-4">
                 No bids
               </div>
             )}
@@ -315,9 +311,7 @@ export const OrderBook = ({
               return (
                 <div
                   key={key}
-                  onMouseEnter={() => setHoveredRow(key)}
-                  onMouseLeave={() => setHoveredRow(null)}
-                  className="relative grid grid-cols-[1fr_auto_auto] items-center px-4 py-1.5 transition-colors group cursor-pointer"
+                  className="group relative grid grid-cols-[minmax(0,1fr)_60px_52px] items-center px-3 py-1.5 transition-colors cursor-pointer sm:grid-cols-[1fr_80px_64px] sm:px-4"
                 >
                   <div
                     className="absolute right-0 inset-y-0 pointer-events-none bg-emerald-500/4"
@@ -338,10 +332,10 @@ export const OrderBook = ({
                       </span>
                     )}
                   </span>
-                  <span className="relative z-10 text-right w-20 pr-3 font-mono text-xs text-muted-foreground/60 tabular-nums">
+                  <span className="relative z-10 pr-2 text-right font-mono text-xs tabular-nums text-muted-foreground/60 sm:pr-3">
                     {formatSize(bid.size)}
                   </span>
-                  <span className="relative z-10 text-right w-16 font-mono text-[10px] text-muted-foreground/30 tabular-nums">
+                  <span className="relative z-10 text-right font-mono text-[10px] tabular-nums text-muted-foreground/30">
                     {formatSize(bid.total)}
                   </span>
                 </div>
