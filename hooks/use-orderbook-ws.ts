@@ -14,11 +14,12 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { BackendOrder, OrderbookSnapshot, OrderbookDiff } from '@/lib/api/backend';
-import { getOrderbookWsUrl } from '@/lib/api/backend';
+import { fetchBackendOrderbook, getOrderbookWsUrl } from '@/lib/api/backend';
 
 export type WsStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
 export type LiveOrderbook = OrderbookSnapshot;
+type RestOrderbook = Awaited<ReturnType<typeof fetchBackendOrderbook>>;
 
 // ─── Diff helpers ──────────────────────────────────────────────────────────────
 
@@ -43,6 +44,17 @@ function applySide(
   const next = filtered.concat(added);
   next.sort((a, b) => (sortDesc ? b.price - a.price : a.price - b.price));
   return next;
+}
+
+function toLiveOrderbook(snapshot: RestOrderbook): LiveOrderbook {
+  return {
+    slot: 0,
+    market_id: snapshot.market_id,
+    yes_bids: snapshot.yes_buy_orders,
+    yes_asks: snapshot.yes_sell_orders,
+    no_bids: snapshot.no_buy_orders,
+    no_asks: snapshot.no_sell_orders,
+  };
 }
 
 // ─── Hook ──────────────────────────────────────────────────────────────────────
@@ -150,10 +162,22 @@ export function useOrderbookWs(marketId: number | null) {
       return;
     }
 
+    let cancelled = false;
     attemptRef.current = 0;
+    void fetchBackendOrderbook(marketId)
+      .then((snapshot) => {
+        if (cancelled) return;
+        setOrderbook((prev) => prev ?? toLiveOrderbook(snapshot));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.warn('[OrderbookWS] REST fallback failed:', err);
+        }
+      });
     connect();
 
     return () => {
+      cancelled = true;
       clearReconnect();
       if (wsRef.current) {
         wsRef.current.onclose = null;

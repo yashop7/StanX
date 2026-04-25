@@ -5,7 +5,7 @@ export type TxOutcome =
   | { kind: "success"; signature?: string }
   | { kind: "failed"; reason: string }
   | { kind: "cancelled" }
-  | { kind: "pending"; hint: string };
+  | { kind: "pending"; hint: string; signature?: string };
 
 export const PROGRAM_ERROR_MESSAGES: Record<number, string> = {
   0x1771: "Invalid settlement deadline",
@@ -17,12 +17,17 @@ export const PROGRAM_ERROR_MESSAGES: Record<number, string> = {
   0x178b: "Settlement deadline has not been reached yet",
 };
 
-// Solana Kit SDK error codes that wrap the real failure — map to human messages
-const SOLANA_SDK_ERRORS: Record<number, string> = {
-  7618003: "Transaction failed to send. The network may be congested — please try again.",
-  7050003: "Transaction simulation failed. Check your balance and try again.",
+// Solana Kit / transaction-wrapper errors.
+// Some are definite pre-execution failures, while others mean the client is
+// unsure whether the transaction landed and must verify before showing failure.
+const DEFINITE_SDK_FAILURES: Record<number, string> = {
+  7050003: "A required account was not found while preparing the transaction.",
   7050002: "Transaction could not be simulated.",
-  6291456: "Transaction was not confirmed in time. Check your wallet history.",
+};
+
+const UNCERTAIN_SDK_ERRORS: Record<number, string> = {
+  7618003: "Transaction status is uncertain. We couldn't confirm it yet.",
+  6291456: "Transaction was submitted but confirmation timed out.",
 };
 
 function walkError<T>(
@@ -172,24 +177,34 @@ async function verifyViaBackend(
   return { found: false };
 }
 
-async function verifyOnChain(
+function hasBackendContext(
+  context:
+    | {
+        marketId: number;
+        userPubkey: string;
+        orderStartTime: number;
+      }
+    | undefined,
+): context is {
+  marketId: number;
+  userPubkey: string;
+  orderStartTime: number;
+} {
+  return !!context?.userPubkey;
+}
+
+async function verifyBySignature(
   signature: string,
-): Promise<{ landed: boolean; failed?: boolean }> {
-  try {
-    const res = await Promise.race([
-      rpc.getSignatureStatuses([signature as never]).send(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("rpc timeout")), 8_000),
-      ),
-    ]);
-    const status = res.value[0];
-    if (status) {
-      return { landed: true, failed: !!status.err };
-    }
-  } catch {
-    // RPC unreachable or timed out
+  maxMs = 20_000,
+): Promise<TxOutcome | undefined> {
+  const confirmation = await pollForConfirmation(signature, maxMs);
+  if (confirmation.result === "confirmed") {
+    return { kind: "success", signature };
   }
-  return { landed: false };
+  if (confirmation.result === "failed") {
+    return { kind: "failed", reason: "Transaction failed on-chain" };
+  }
+  return undefined;
 }
 
 export async function classifyTxError(
@@ -219,30 +234,46 @@ export async function classifyTxError(
     };
   }
 
-  // Solana Kit SDK wrapper errors — show friendly message, then dig for real cause
   const sdkCode = extractSolanaKitCode(err);
+  const signature = extractSignature(err);
+  const isUncertainSdkError = sdkCode !== undefined && sdkCode in UNCERTAIN_SDK_ERRORS;
+  const shouldVerifySignatureFirst =
+    !!signature && (isConfirmationTimeout(err) || isUncertainSdkError || sdkCode === undefined);
+
+  if (shouldVerifySignatureFirst && signature) {
+    const signatureOutcome = await verifyBySignature(signature, 20_000);
+    if (signatureOutcome) return signatureOutcome;
+  }
+
+  if (hasBackendContext(context)) {
+    const shouldProbeBackend =
+      isConfirmationTimeout(err) || isUncertainSdkError || sdkCode === 7618003 || sdkCode === undefined;
+    if (shouldProbeBackend) {
+      const { found, signature: backendSignature } = await verifyViaBackend(
+        context.marketId,
+        context.userPubkey,
+        context.orderStartTime,
+      );
+      if (found) return { kind: "success", signature: backendSignature ?? signature };
+    }
+  }
+
   if (sdkCode !== undefined) {
-    // If there's a nested program error inside the wrapper, surface that first
-    const nested = walkError<number>(
-      (err as Record<string, unknown>).cause ?? (err as Record<string, unknown>).context,
-      (o) => {
-        if (typeof o.code !== "number") return undefined;
-        if (o.code >= 6000 && o.code <= 6999) return o.code;
-        return undefined;
-      },
-    );
-    if (nested !== undefined) {
+    if (sdkCode in DEFINITE_SDK_FAILURES) {
       return {
         kind: "failed",
-        reason: PROGRAM_ERROR_MESSAGES[nested] ?? `Transaction rejected by the contract (code ${nested})`,
+        reason:
+          DEFINITE_SDK_FAILURES[sdkCode] ??
+          "Transaction failed before it could be submitted.",
       };
     }
-
-    // No nested program error — use the friendly SDK message
-    return {
-      kind: "failed",
-      reason: SOLANA_SDK_ERRORS[sdkCode] ?? "Transaction failed to send. Please try again.",
-    };
+    if (sdkCode in UNCERTAIN_SDK_ERRORS) {
+      return {
+        kind: "pending",
+        hint: `${UNCERTAIN_SDK_ERRORS[sdkCode]} Check your wallet or Solana explorer.`,
+        signature,
+      };
+    }
   }
 
   const simLogs = extractSimLogs(err);
@@ -257,29 +288,14 @@ export async function classifyTxError(
   }
 
   if (isConfirmationTimeout(err)) {
-    const sig = extractSignature(err);
-    if (sig) {
-      const { landed, failed } = await verifyOnChain(sig);
-      if (landed && !failed) return { kind: "success", signature: sig };
-      if (landed && failed) return { kind: "failed", reason: "Transaction reverted on-chain" };
-    }
-
-    if (context?.userPubkey) {
-      const { found, signature } = await verifyViaBackend(
-        context.marketId,
-        context.userPubkey,
-        context.orderStartTime,
-      );
-      if (found) return { kind: "success", signature };
-    }
-
     return {
       kind: "pending",
       hint: "Transaction submitted but confirmation timed out. Check your wallet or Solana explorer.",
+      signature,
     };
   }
 
-  if (context?.userPubkey) {
+  if (hasBackendContext(context)) {
     const { found, signature } = await verifyViaBackend(
       context.marketId,
       context.userPubkey,
@@ -287,6 +303,14 @@ export async function classifyTxError(
       5_000,
     );
     if (found) return { kind: "success", signature };
+  }
+
+  if (signature) {
+    return {
+      kind: "pending",
+      hint: "Transaction was submitted, but its final status is still uncertain. Check your wallet or Solana explorer.",
+      signature,
+    };
   }
 
   const rawMsg = err instanceof Error ? err.message : "Unknown error";

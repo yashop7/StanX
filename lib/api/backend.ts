@@ -180,7 +180,23 @@ interface RestOrderbookResponse {
 
 /** GET /markets/:id/orderbook, REST snapshot (fallback; prefer WebSocket) */
 export async function fetchBackendOrderbook(marketId: number): Promise<RestOrderbookResponse> {
-  return get<RestOrderbookResponse>(`/markets/${marketId}/orderbook`);
+  const res = await fetch(`${BASE_URL}/markets/${marketId}/orderbook`, { cache: 'no-store' });
+  if (res.status === 404) {
+    // Fresh markets can legitimately have no persisted orderbook rows yet.
+    // Treat that as an empty book so the UI can render the empty state.
+    return {
+      market_id: marketId,
+      yes_buy_orders: [],
+      yes_sell_orders: [],
+      no_buy_orders: [],
+      no_sell_orders: [],
+    };
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Backend /markets/${marketId}/orderbook → ${res.status}: ${text}`);
+  }
+  return res.json() as Promise<RestOrderbookResponse>;
 }
 
 

@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Info, ArrowDownUp, Coins, Zap, Layers, Loader2, AlertTriangle, Trophy, Lock } from "lucide-react";
+import {
+  Info,
+  ArrowDownUp,
+  Coins,
+  Zap,
+  Layers,
+  Loader2,
+  AlertTriangle,
+  Trophy,
+  Lock,
+} from "lucide-react";
 import { useIndexerHealth } from "@/hooks/use-indexer-health";
 import {
   Tooltip,
@@ -21,7 +31,11 @@ import {
   buildMergeInstruction,
   PRICE_SCALE,
 } from "@/lib/blockchain/market";
-import { classifyTxError, isUserRejection, extractSignature } from "@/lib/blockchain/verify-tx";
+import {
+  classifyTxError,
+  isUserRejection,
+  extractSignature,
+} from "@/lib/blockchain/verify-tx";
 import { SOLANA_NETWORK, USDC_FAUCET_URL } from "@/lib/constants";
 
 interface TradingPanelNewProps {
@@ -54,7 +68,17 @@ export const TradingPanelNew = ({
   winningOutcome,
   marketEndDate,
 }: TradingPanelNewProps) => {
-  const isExpired = !isSettled && !!marketEndDate && new Date() >= marketEndDate;
+  const isExpired =
+    !isSettled && !!marketEndDate && new Date() >= marketEndDate;
+  const settlementDeadlineLabel = marketEndDate
+    ? marketEndDate.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
   const [orderType, setOrderType] = useState<OrderType>("market");
   const [action, setAction] = useState<"buy" | "sell">("buy");
   const [tokenType, setTokenType] = useState<"yes" | "no">("yes");
@@ -62,9 +86,12 @@ export const TradingPanelNew = ({
   const [limitPrice, setLimitPrice] = useState<string>("");
   const [splitAmount, setSplitAmount] = useState<string>("");
   const [mergeAmount, setMergeAmount] = useState<string>("");
-  const { usdcBalance, refresh: refreshCollateral } = useTokenBalance(collateralMint);
-  const { usdcBalance: yesBalance, refresh: refreshYes } = useTokenBalance(outcomeYesMint);
-  const { usdcBalance: noBalance, refresh: refreshNo } = useTokenBalance(outcomeNoMint);
+  const { usdcBalance, refresh: refreshCollateral } =
+    useTokenBalance(collateralMint);
+  const { usdcBalance: yesBalance, refresh: refreshYes } =
+    useTokenBalance(outcomeYesMint);
+  const { usdcBalance: noBalance, refresh: refreshNo } =
+    useTokenBalance(outcomeNoMint);
   const balance = usdcBalance ?? 0;
   const tokenBalance =
     tokenType === "yes" ? (yesBalance ?? 0) : (noBalance ?? 0);
@@ -72,6 +99,7 @@ export const TradingPanelNew = ({
   const { send, isSending } = useSendTransaction();
   const { indexerOk } = useIndexerHealth();
   const submitting = useRef(false);
+  type SendPayload = Parameters<typeof send>[0];
 
   useEffect(() => {
     if (selectedTokenType) {
@@ -126,6 +154,14 @@ export const TradingPanelNew = ({
     let orderStartTime = 0;
 
     try {
+      if (isExpired) {
+        toast.error("Order entry is closed.", {
+          description:
+            "This market has reached its settlement deadline. New orders stay disabled until the market is settled.",
+        });
+        return;
+      }
+
       const amountInput = parseFloat(amount);
 
       if (!session) {
@@ -171,7 +207,12 @@ export const TradingPanelNew = ({
       const { signer } = createWalletTransactionSigner(session);
 
       if (orderType === "limit") {
-        if (!limitPrice || isNaN(limitPriceNum) || limitPriceNum <= 0 || limitPriceNum > 99) {
+        if (
+          !limitPrice ||
+          isNaN(limitPriceNum) ||
+          limitPriceNum <= 0 ||
+          limitPriceNum > 99
+        ) {
           toast.error("Please enter a valid limit price between 1¢ and 99¢.");
           return;
         }
@@ -184,8 +225,10 @@ export const TradingPanelNew = ({
           price: BigInt(Math.round(limitPriceNum * 10_000)),
         });
         orderStartTime = Math.floor(Date.now() / 1000); // capture RIGHT before send()
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sig = await send({ instructions: ixs as any[], authority: signer });
+        const sig = await send({
+          instructions: ixs as SendPayload["instructions"],
+          authority: signer,
+        });
         const sigStr = String(sig);
         toast.success(`Limit ${action} order placed!`, {
           description: `${amountInput.toFixed(2)} ${outcomeToken} shares @ ${limitPriceNum}¢`,
@@ -200,8 +243,10 @@ export const TradingPanelNew = ({
           orderAmount: BigInt(Math.round(amountInput * PRICE_SCALE)),
         });
         orderStartTime = Math.floor(Date.now() / 1000); // capture RIGHT before send()
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const sig = await send({ instructions: ixs as any[], authority: signer });
+        const sig = await send({
+          instructions: ixs as SendPayload["instructions"],
+          authority: signer,
+        });
         const sigStr = String(sig);
         toast.success(`Market ${action} filled!`, {
           description: `${action === "buy" ? "Spent" : "Sold"} ${amountInput.toFixed(2)} ${action === "buy" ? "USDC on" : outcomeToken + " tokens for"} ${outcomeToken}`,
@@ -215,14 +260,19 @@ export const TradingPanelNew = ({
       console.error("[TradingPanel] order error:", err);
 
       if (isUserRejection(err)) {
-        toast.info("Transaction cancelled", { description: "You rejected the transaction in your wallet." });
+        toast.info("Transaction cancelled", {
+          description: "You rejected the transaction in your wallet.",
+        });
         return;
       }
 
       // Show verifying toast. Safety timer ensures it always dismisses even if
       // classifyTxError itself hangs (e.g. all fetch calls time out).
       const verifyToastId = toast.loading("Verifying order on-chain…");
-      const safetyTimer = setTimeout(() => toast.dismiss(verifyToastId), 20_000);
+      const safetyTimer = setTimeout(
+        () => toast.dismiss(verifyToastId),
+        20_000
+      );
 
       try {
         const outcome = await classifyTxError(err, {
@@ -235,13 +285,24 @@ export const TradingPanelNew = ({
 
         if (outcome.kind === "success") {
           const toastOpts = outcome.signature
-            ? { description: "Order confirmed on-chain", action: explorerAction(outcome.signature) }
+            ? {
+                description: "Order confirmed on-chain",
+                action: explorerAction(outcome.signature),
+              }
             : { description: "Order confirmed via indexer" };
-          toast.success(`${orderType === "limit" ? "Limit" : "Market"} ${action} order placed!`, toastOpts);
+          toast.success(
+            `${orderType === "limit" ? "Limit" : "Market"} ${action} order placed!`,
+            toastOpts
+          );
           setAmount("");
           setLimitPrice("");
         } else if (outcome.kind === "pending") {
-          toast.warning("Transaction submitted", { description: outcome.hint });
+          toast.warning("Transaction submitted", {
+            description: outcome.hint,
+            ...(outcome.signature
+              ? { action: explorerAction(outcome.signature) }
+              : {}),
+          });
         } else if (outcome.kind === "failed") {
           toast.error("Order failed", { description: outcome.reason });
         } else {
@@ -254,7 +315,8 @@ export const TradingPanelNew = ({
         // Try to salvage a signature from the original error for the explorer link
         const salvageSig = extractSignature(err);
         toast.warning("Order status unknown", {
-          description: "Transaction may have gone through. Check your wallet history.",
+          description:
+            "Transaction may have gone through. Check your wallet history.",
           ...(salvageSig ? { action: explorerAction(salvageSig) } : {}),
         });
       }
@@ -298,21 +360,36 @@ export const TradingPanelNew = ({
         description: `Burned ${mergeAmountNum.toFixed(2)} YES + ${mergeAmountNum.toFixed(2)} NO → received ${mergeAmountNum.toFixed(2)} USDC — tx: ${String(sig).slice(0, 8)}…`,
       });
       setMergeAmount("");
-      refreshCollateral(); refreshYes(); refreshNo();
+      refreshCollateral();
+      refreshYes();
+      refreshNo();
     } catch (err) {
       console.error("[TradingPanel] merge error:", err);
       if (isUserRejection(err)) {
-        toast.info("Merge cancelled", { description: "You rejected the transaction in your wallet." });
+        toast.info("Merge cancelled", {
+          description: "You rejected the transaction in your wallet.",
+        });
       } else {
         const verifyToastId = toast.loading("Verifying merge on-chain…");
         const outcome = await classifyTxError(err);
         toast.dismiss(verifyToastId);
         if (outcome.kind === "success") {
-          toast.success("Tokens merged!", { description: outcome.signature ? `tx: ${outcome.signature.slice(0, 8)}…` : "Confirmed via indexer" });
+          toast.success("Tokens merged!", {
+            description: outcome.signature
+              ? `tx: ${outcome.signature.slice(0, 8)}…`
+              : "Confirmed via indexer",
+          });
           setMergeAmount("");
-          refreshCollateral(); refreshYes(); refreshNo();
+          refreshCollateral();
+          refreshYes();
+          refreshNo();
         } else if (outcome.kind === "pending") {
-          toast.warning("Merge pending", { description: outcome.hint });
+          toast.warning("Merge pending", {
+            description: outcome.hint,
+            ...(outcome.signature
+              ? { action: explorerAction(outcome.signature) }
+              : {}),
+          });
         } else if (outcome.kind === "failed") {
           toast.error("Merge failed", { description: outcome.reason });
         } else {
@@ -328,6 +405,14 @@ export const TradingPanelNew = ({
     if (submitting.current) return;
     submitting.current = true;
     try {
+      if (isExpired) {
+        toast.error("Splitting is closed.", {
+          description:
+            "The settlement deadline has passed. You can still merge YES and NO token pairs back to USDC while the market awaits settlement.",
+        });
+        return;
+      }
+
       const splitAmountNum = parseFloat(splitAmount);
 
       if (!session) {
@@ -361,28 +446,51 @@ export const TradingPanelNew = ({
       setSplitAmount("");
       // Refresh immediately, then again after 2 s to catch RPC propagation lag
       await Promise.all([refreshCollateral(), refreshYes(), refreshNo()]);
-      setTimeout(() => { refreshCollateral(); refreshYes(); refreshNo(); }, 2_000);
+      setTimeout(() => {
+        refreshCollateral();
+        refreshYes();
+        refreshNo();
+      }, 2_000);
     } catch (err) {
       console.error("[TradingPanel] split error:", err);
       if (isUserRejection(err)) {
-        toast.info("Split cancelled", { description: "You rejected the transaction in your wallet." });
+        toast.info("Split cancelled", {
+          description: "You rejected the transaction in your wallet.",
+        });
       } else {
         const verifyToastId = toast.loading("Verifying split on-chain…");
         let outcome;
         try {
           outcome = await classifyTxError(err);
         } catch {
-          outcome = { kind: "failed" as const, reason: "Verification failed — check your wallet or Solana explorer." };
+          outcome = {
+            kind: "failed" as const,
+            reason:
+              "Verification failed — check your wallet or Solana explorer.",
+          };
         } finally {
           toast.dismiss(verifyToastId);
         }
         if (outcome.kind === "success") {
-          toast.success("Tokens split!", { description: outcome.signature ? `tx: ${outcome.signature.slice(0, 8)}…` : "Confirmed on-chain" });
+          toast.success("Tokens split!", {
+            description: outcome.signature
+              ? `tx: ${outcome.signature.slice(0, 8)}…`
+              : "Confirmed on-chain",
+          });
           setSplitAmount("");
           await Promise.all([refreshCollateral(), refreshYes(), refreshNo()]);
-          setTimeout(() => { refreshCollateral(); refreshYes(); refreshNo(); }, 2_000);
+          setTimeout(() => {
+            refreshCollateral();
+            refreshYes();
+            refreshNo();
+          }, 2_000);
         } else if (outcome.kind === "pending") {
-          toast.warning("Split pending", { description: outcome.hint });
+          toast.warning("Split pending", {
+            description: outcome.hint,
+            ...(outcome.signature
+              ? { action: explorerAction(outcome.signature) }
+              : {}),
+          });
         } else if (outcome.kind === "failed") {
           toast.error("Split failed", { description: outcome.reason });
         } else {
@@ -432,30 +540,46 @@ export const TradingPanelNew = ({
         {isSettled && (
           <div className="space-y-4">
             <div className="flex flex-col items-center gap-3 py-4">
-              <div className={cn(
-                "h-12 w-12 rounded-full flex items-center justify-center",
-                winningOutcome === "YES" ? "bg-success/15" :
-                winningOutcome === "NO" ? "bg-danger/15" : "bg-muted/30"
-              )}>
-                <Trophy className={cn(
-                  "h-6 w-6",
-                  winningOutcome === "YES" ? "text-success" :
-                  winningOutcome === "NO" ? "text-danger" : "text-muted-foreground"
-                )} />
+              <div
+                className={cn(
+                  "h-12 w-12 rounded-full flex items-center justify-center",
+                  winningOutcome === "YES"
+                    ? "bg-success/15"
+                    : winningOutcome === "NO"
+                      ? "bg-danger/15"
+                      : "bg-muted/30"
+                )}
+              >
+                <Trophy
+                  className={cn(
+                    "h-6 w-6",
+                    winningOutcome === "YES"
+                      ? "text-success"
+                      : winningOutcome === "NO"
+                        ? "text-danger"
+                        : "text-muted-foreground"
+                  )}
+                />
               </div>
               <div className="text-center space-y-1">
                 <p className="text-sm font-semibold">Market Resolved</p>
                 <p className="text-xs text-muted-foreground">
-                  {winningOutcome === "YES" ? "YES wins — YES token holders can claim $1 per token" :
-                   winningOutcome === "NO" ? "NO wins — NO token holders can claim $1 per token" :
-                   winningOutcome === "NEITHER" ? "Neither outcome won — collateral returned proportionally" :
-                   "This market has been settled"}
+                  {winningOutcome === "YES"
+                    ? "YES wins — YES token holders can claim $1 per token"
+                    : winningOutcome === "NO"
+                      ? "NO wins — NO token holders can claim $1 per token"
+                      : winningOutcome === "NEITHER"
+                        ? "Neither outcome won — collateral returned proportionally"
+                        : "This market has been settled"}
                 </p>
               </div>
             </div>
             <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-muted/20 border border-border/30 text-xs text-muted-foreground">
               <Lock className="h-3.5 w-3.5 shrink-0" />
-              <span>New orders and splitting are disabled. You can still merge token pairs back into USDC.</span>
+              <span>
+                New orders and splitting are disabled. You can still merge token
+                pairs back into USDC.
+              </span>
             </div>
             {/* Show merge tab when settled */}
             <button
@@ -474,555 +598,699 @@ export const TradingPanelNew = ({
         )}
 
         {/* ── Active trading UI (hidden when settled, except merge) ── */}
-        {!isSettled && (<>
-        {/* Indexer offline banner */}
-        {!indexerOk && (
-          <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            <span>System is syncing, trading is temporarily paused</span>
-          </div>
-        )}
-
-        {/* Tab bar — underline style */}
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-5 sm:border-b sm:border-border">
-            {orderTypes.map((type) => (
-              <button
-                key={type.value}
-                onClick={() => setOrderType(type.value)}
-                className={cn(
-                  "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-[11px] font-medium transition-all duration-150 sm:rounded-none sm:border-x-0 sm:border-t-0 sm:px-0 sm:text-xs",
-                  orderType === type.value
-                    ? "border-border bg-muted/30 text-foreground sm:border-foreground sm:bg-transparent"
-                    : "border-border/40 text-muted-foreground hover:border-border hover:text-foreground sm:border-transparent"
-                )}
-              >
-                <span>{type.icon}</span>
-                <span>{type.label}</span>
-              </button>
-            ))}
-        </div>
-
-        {/* Market & Limit Order Content */}
-        {(orderType === "market" || orderType === "limit") && (
+        {!isSettled && (
           <>
-            {/* BUY / SELL toggle */}
-
-            {/* YES / NO selector */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => {
-                  setTokenType("yes");
-                  onTokenTypeChange?.("yes");
-                }}
-                className={cn(
-                  "py-3.5 rounded-lg border text-left px-3.5 transition-all duration-150",
-                  tokenType === "yes"
-                    ? "bg-success/8 border-success/30"
-                    : "bg-muted/20 border-border hover:border-success/20"
-                )}
-              >
-                <div
-                  className={cn(
-                    "text-[10px] font-bold uppercase tracking-wider mb-0.5",
-                    tokenType === "yes"
-                      ? "text-success"
-                      : "text-muted-foreground"
-                  )}
-                >
-                  YES
+            {isExpired && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/8 px-3 py-3 text-xs text-amber-100/85">
+                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+                <div className="space-y-1">
+                  <p className="font-semibold text-amber-300">
+                    Settlement deadline reached
+                  </p>
+                  <p>
+                    {settlementDeadlineLabel
+                      ? `This market closed for trading on ${settlementDeadlineLabel}.`
+                      : "This market has closed for trading."}{" "}
+                    New market orders, limit orders, splits, and order
+                    cancellations are disabled until settlement.
+                  </p>
                 </div>
-                <div className="text-sm font-bold font-mono">
-                  {(yesPrice * 100).toFixed(1)}¢
-                </div>
-                {action === "sell" && yesBalance !== null && (
-                  <div className="text-[10px] text-muted-foreground mt-0.5">
-                    {yesBalance.toLocaleString()} held
-                  </div>
-                )}
-              </button>
-              <button
-                onClick={() => {
-                  setTokenType("no");
-                  onTokenTypeChange?.("no");
-                }}
-                className={cn(
-                  "py-3.5 rounded-lg border text-left px-3.5 transition-all duration-150",
-                  tokenType === "no"
-                    ? "bg-danger/8 border-danger/30"
-                    : "bg-muted/20 border-border hover:border-danger/20"
-                )}
-              >
-                <div
-                  className={cn(
-                    "text-[10px] font-bold uppercase tracking-wider mb-0.5",
-                    tokenType === "no" ? "text-danger" : "text-muted-foreground"
-                  )}
-                >
-                  NO
-                </div>
-                <div className="text-sm font-bold font-mono">
-                  {(noPrice * 100).toFixed(1)}¢
-                </div>
-                {action === "sell" && noBalance !== null && (
-                  <div className="text-[10px] text-muted-foreground mt-0.5">
-                    {noBalance.toLocaleString()} held
-                  </div>
-                )}
-              </button>
-            </div>
-
-            <div className="p-1 rounded-lg bg-muted/40 border border-border flex">
-              <button
-                onClick={() => setAction("buy")}
-                className={cn(
-                  "flex-1 py-2.5 rounded-md text-xs font-semibold transition-all duration-150",
-                  action === "buy"
-                    ? "bg-success text-white shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Buy
-              </button>
-              <button
-                onClick={() => setAction("sell")}
-                className={cn(
-                  "flex-1 py-2.5 rounded-md text-xs font-semibold transition-all duration-150",
-                  action === "sell"
-                    ? "bg-danger text-white shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Sell
-              </button>
-            </div>
-
-            {/* Limit Price (limit orders only) */}
-            {orderType === "limit" && (
-              <div className="space-y-1.5">
-                <Label
-                  htmlFor="limit-price"
-                  className="text-xs text-muted-foreground font-medium"
-                >
-                  Limit Price (¢)
-                </Label>
-                <Input
-                  id="limit-price"
-                  type="number"
-                  placeholder="50"
-                  value={limitPrice}
-                  onChange={(e) => setLimitPrice(e.target.value)}
-                  onWheel={(e) => e.currentTarget.blur()}
-                  className="h-10 bg-muted/30 border-border rounded-lg font-mono text-sm"
-                />
               </div>
             )}
 
-            {/* Amount Input */}
-            <div className="space-y-1.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label
-                  htmlFor="amount"
-                  className="text-xs text-muted-foreground font-medium"
-                >
-                  {isLimit
-                    ? action === "buy"
-                      ? "Shares to buy"
-                      : "Shares to sell"
-                    : action === "buy"
-                      ? "Amount (USDC)"
-                      : "Shares to sell"}
-                </Label>
-                {action === "sell" && (
-                  <button
-                    onClick={() => setAmount(String(tokenBalance))}
-                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
-                  >
-                    Max {tokenBalance.toLocaleString()}
-                  </button>
-                )}
+            {/* Indexer offline banner */}
+            {!indexerOk && (
+              <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                <span>System is syncing, trading is temporarily paused</span>
               </div>
-              <div className="relative">
-                {/* Show $ prefix only for market buy (USDC input) */}
-                {!isLimit && action === "buy" && (
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium select-none">
-                    $
-                  </span>
-                )}
-                <Input
-                  id="amount"
-                  type="number"
-                  placeholder="0.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  onWheel={(e) => e.currentTarget.blur()}
-                  className={cn(
-                    "h-11 bg-muted/30 border-border rounded-lg font-mono text-sm",
-                    !isLimit && action === "buy" ? "pl-7" : "pl-3.5"
-                  )}
-                />
-              </div>
+            )}
 
-              {/* For limit buy: show derived USDC cost */}
-              {isLimit &&
-                action === "buy" &&
-                amountNum > 0 &&
-                limitPriceNum > 0 && (
-                  <p className="text-[11px] text-muted-foreground">
-                    Cost:{" "}
-                    <span className="font-mono font-medium text-foreground">
-                      ${usdcCost.toFixed(2)} USDC
-                    </span>
-                  </p>
-                )}
-
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                {(isLimit
-                  ? ["1", "5", "10", "25"]
-                  : ["10", "25", "50", "100"]
-                ).map((val) => (
+            {/* Tab bar — underline style */}
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-5 sm:border-b sm:border-border">
+              {orderTypes.map((type) => {
+                const isDisabled = isExpired && type.value !== "merge";
+                return (
                   <button
-                    key={val}
-                    onClick={() => setAmount(val)}
+                    key={type.value}
+                    onClick={() => setOrderType(type.value)}
+                    disabled={isDisabled}
+                    title={
+                      isDisabled
+                        ? "Settlement deadline reached — this action is closed until settlement."
+                        : undefined
+                    }
                     className={cn(
-                      "py-2.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
-                      amount === val
-                        ? action === "buy"
-                          ? "border-success/50 bg-success/10 text-success"
-                          : "border-danger/50 bg-danger/10 text-danger"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                      "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-[11px] font-medium transition-all duration-150 sm:rounded-none sm:border-x-0 sm:border-t-0 sm:px-0 sm:text-xs",
+                      "disabled:cursor-not-allowed disabled:opacity-45",
+                      orderType === type.value
+                        ? "border-border bg-muted/30 text-foreground sm:border-foreground sm:bg-transparent"
+                        : "border-border/40 text-muted-foreground hover:border-border hover:text-foreground sm:border-transparent"
                     )}
                   >
-                    {isLimit ? val : `$${val}`}
+                    <span>{type.icon}</span>
+                    <span>{type.label}</span>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
 
-            {/* Order receipt */}
-            <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
-              {/* Row 1: shares / USDC cost */}
-              <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-muted-foreground">
-                  {action === "buy" ? "Shares" : "Shares sold"}
-                </span>
-                <span className="break-all font-mono font-medium sm:text-right">
-                  {shares > 0 ? shares.toFixed(4) : "—"}{" "}
-                  {tokenType.toUpperCase()}
-                </span>
-              </div>
+            {/* Market & Limit Order Content */}
+            {(orderType === "market" || orderType === "limit") && (
+              <>
+                {isExpired && (
+                  <div className="rounded-lg border border-border/30 bg-muted/20 px-3 py-2.5 text-[11px] text-muted-foreground">
+                    Order entry is closed for this market. You can still review
+                    the last price snapshot below or switch to{" "}
+                    <span className="font-semibold text-foreground">Merge</span>{" "}
+                    to turn paired YES and NO tokens back into USDC.
+                  </div>
+                )}
 
-              {/* Row 2: USDC spent / received */}
-              <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-muted-foreground">
-                  {action === "buy" ? "USDC spent" : "USDC received"}
-                </span>
-                <span className="break-all font-mono font-medium sm:text-right">
-                  $
-                  {action === "buy"
-                    ? usdcCost.toFixed(2)
-                    : (
-                        amountNum * (isLimit ? limitPriceFrac : currentPrice)
-                      ).toFixed(2)}
-                </span>
-              </div>
-
-              {/* Row 3: max payout */}
-              <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger className="flex items-center gap-1 text-muted-foreground">
-                      Max payout <Info className="h-3 w-3" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs">{`${tokenType.toUpperCase()} shares pay $1 each on correct resolution`}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-                <span className="break-all font-mono font-medium sm:text-right">
-                  ${potentialWin.toFixed(2)}
-                </span>
-              </div>
-
-              {/* Row 4: profit */}
-              <div className="flex flex-col gap-1 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-xs text-muted-foreground">
-                  Profit if correct
-                </span>
-                <span
-                  className={cn(
-                    "break-all text-sm font-bold font-mono sm:text-right",
-                    profit >= 0 ? "text-success" : "text-danger"
-                  )}
+                <fieldset
+                  disabled={isExpired}
+                  className={cn("space-y-4", isExpired && "opacity-45")}
                 >
-                  {profit >= 0 ? "+" : ""}${profit.toFixed(2)}
-                </span>
-              </div>
-            </div>
+                  {/* BUY / SELL toggle */}
 
-            {/* CTA */}
-            <button
-              onClick={handleTrade}
-              disabled={!indexerOk || !amount || parseFloat(amount) <= 0 || isSending}
-              className={cn(
-                "w-full py-3.5 rounded-lg font-semibold text-sm text-white transition-all duration-150",
-                "disabled:opacity-40 disabled:cursor-not-allowed",
-                action === "buy"
-                  ? "bg-success hover:brightness-110 shadow-sm shadow-success/20"
-                  : "bg-danger hover:brightness-110 shadow-sm shadow-danger/20"
-              )}
-            >
-              <span className="flex items-center justify-center gap-2">
-                {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
-                {isSending
-                  ? action === "buy"
-                    ? "Buying…"
-                    : "Selling…"
-                  : `${action === "buy" ? "Buy" : "Sell"} ${tokenType.toUpperCase()}`}
-              </span>
-            </button>
+                  {/* YES / NO selector */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => {
+                        setTokenType("yes");
+                        onTokenTypeChange?.("yes");
+                      }}
+                      className={cn(
+                        "py-3.5 rounded-lg border text-left px-3.5 transition-all duration-150",
+                        tokenType === "yes"
+                          ? "bg-success/8 border-success/30"
+                          : "bg-muted/20 border-border hover:border-success/20"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "text-[10px] font-bold uppercase tracking-wider mb-0.5",
+                          tokenType === "yes"
+                            ? "text-success"
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        YES
+                      </div>
+                      <div className="text-sm font-bold font-mono">
+                        {(yesPrice * 100).toFixed(1)}¢
+                      </div>
+                      {action === "sell" && yesBalance !== null && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          {yesBalance.toLocaleString()} held
+                        </div>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setTokenType("no");
+                        onTokenTypeChange?.("no");
+                      }}
+                      className={cn(
+                        "py-3.5 rounded-lg border text-left px-3.5 transition-all duration-150",
+                        tokenType === "no"
+                          ? "bg-danger/8 border-danger/30"
+                          : "bg-muted/20 border-border hover:border-danger/20"
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "text-[10px] font-bold uppercase tracking-wider mb-0.5",
+                          tokenType === "no"
+                            ? "text-danger"
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        NO
+                      </div>
+                      <div className="text-sm font-bold font-mono">
+                        {(noPrice * 100).toFixed(1)}¢
+                      </div>
+                      {action === "sell" && noBalance !== null && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          {noBalance.toLocaleString()} held
+                        </div>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="p-1 rounded-lg bg-muted/40 border border-border flex">
+                    <button
+                      onClick={() => setAction("buy")}
+                      className={cn(
+                        "flex-1 py-2.5 rounded-md text-xs font-semibold transition-all duration-150",
+                        action === "buy"
+                          ? "bg-success text-white shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Buy
+                    </button>
+                    <button
+                      onClick={() => setAction("sell")}
+                      className={cn(
+                        "flex-1 py-2.5 rounded-md text-xs font-semibold transition-all duration-150",
+                        action === "sell"
+                          ? "bg-danger text-white shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      Sell
+                    </button>
+                  </div>
+
+                  {/* Limit Price (limit orders only) */}
+                  {orderType === "limit" && (
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="limit-price"
+                        className="text-xs text-muted-foreground font-medium"
+                      >
+                        Limit Price (¢)
+                      </Label>
+                      <Input
+                        id="limit-price"
+                        type="number"
+                        placeholder="50"
+                        value={limitPrice}
+                        onChange={(e) => setLimitPrice(e.target.value)}
+                        onWheel={(e) => e.currentTarget.blur()}
+                        className="h-10 bg-muted/30 border-border rounded-lg font-mono text-sm"
+                      />
+                    </div>
+                  )}
+
+                  {/* Amount Input */}
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <Label
+                        htmlFor="amount"
+                        className="text-xs text-muted-foreground font-medium"
+                      >
+                        {isLimit
+                          ? action === "buy"
+                            ? "Shares to buy"
+                            : "Shares to sell"
+                          : action === "buy"
+                            ? "Amount (USDC)"
+                            : "Shares to sell"}
+                      </Label>
+                      {action === "sell" && (
+                        <button
+                          onClick={() => setAmount(String(tokenBalance))}
+                          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
+                        >
+                          Max {tokenBalance.toLocaleString()}
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      {/* Show $ prefix only for market buy (USDC input) */}
+                      {!isLimit && action === "buy" && (
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium select-none">
+                          $
+                        </span>
+                      )}
+                      <Input
+                        id="amount"
+                        type="number"
+                        placeholder="0.00"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        onWheel={(e) => e.currentTarget.blur()}
+                        className={cn(
+                          "h-11 bg-muted/30 border-border rounded-lg font-mono text-sm",
+                          !isLimit && action === "buy" ? "pl-7" : "pl-3.5"
+                        )}
+                      />
+                    </div>
+
+                    {/* For limit buy: show derived USDC cost */}
+                    {isLimit &&
+                      action === "buy" &&
+                      amountNum > 0 &&
+                      limitPriceNum > 0 && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Cost:{" "}
+                          <span className="font-mono font-medium text-foreground">
+                            ${usdcCost.toFixed(2)} USDC
+                          </span>
+                        </p>
+                      )}
+
+                    <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                      {(isLimit
+                        ? ["1", "5", "10", "25"]
+                        : ["10", "25", "50", "100"]
+                      ).map((val) => (
+                        <button
+                          key={val}
+                          onClick={() => setAmount(val)}
+                          className={cn(
+                            "py-2.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
+                            amount === val
+                              ? action === "buy"
+                                ? "border-success/50 bg-success/10 text-success"
+                                : "border-danger/50 bg-danger/10 text-danger"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                          )}
+                        >
+                          {isLimit ? val : `$${val}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Order receipt */}
+                  <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
+                    {/* Row 1: shares / USDC cost */}
+                    <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
+                      <span className="text-muted-foreground">
+                        {action === "buy" ? "Shares" : "Shares sold"}
+                      </span>
+                      <span className="break-all font-mono font-medium sm:text-right">
+                        {shares > 0 ? shares.toFixed(4) : "—"}{" "}
+                        {tokenType.toUpperCase()}
+                      </span>
+                    </div>
+
+                    {/* Row 2: USDC spent / received */}
+                    <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
+                      <span className="text-muted-foreground">
+                        {action === "buy" ? "USDC spent" : "USDC received"}
+                      </span>
+                      <span className="break-all font-mono font-medium sm:text-right">
+                        $
+                        {action === "buy"
+                          ? usdcCost.toFixed(2)
+                          : (
+                              amountNum *
+                              (isLimit ? limitPriceFrac : currentPrice)
+                            ).toFixed(2)}
+                      </span>
+                    </div>
+
+                    {/* Row 3: max payout */}
+                    <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger className="flex items-center gap-1 text-muted-foreground">
+                            Max payout <Info className="h-3 w-3" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs">{`${tokenType.toUpperCase()} shares pay $1 each on correct resolution`}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <span className="break-all font-mono font-medium sm:text-right">
+                        ${potentialWin.toFixed(2)}
+                      </span>
+                    </div>
+
+                    {/* Row 4: profit */}
+                    <div className="flex flex-col gap-1 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        Profit if correct
+                      </span>
+                      <span
+                        className={cn(
+                          "break-all text-sm font-bold font-mono sm:text-right",
+                          profit >= 0 ? "text-success" : "text-danger"
+                        )}
+                      >
+                        {profit >= 0 ? "+" : ""}${profit.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* CTA */}
+                  <button
+                    onClick={handleTrade}
+                    disabled={
+                      isExpired ||
+                      !indexerOk ||
+                      !amount ||
+                      parseFloat(amount) <= 0 ||
+                      isSending
+                    }
+                    className={cn(
+                      "w-full py-3.5 rounded-lg font-semibold text-sm text-white transition-all duration-150",
+                      "disabled:opacity-40 disabled:cursor-not-allowed",
+                      action === "buy"
+                        ? "bg-success hover:brightness-110 shadow-sm shadow-success/20"
+                        : "bg-danger hover:brightness-110 shadow-sm shadow-danger/20"
+                    )}
+                  >
+                    <span className="flex items-center justify-center gap-2">
+                      {isSending && (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      )}
+                      {isSending
+                        ? action === "buy"
+                          ? "Buying…"
+                          : "Selling…"
+                        : `${action === "buy" ? "Buy" : "Sell"} ${tokenType.toUpperCase()}`}
+                    </span>
+                  </button>
+                </fieldset>
+              </>
+            )}
           </>
         )}
-        </>)}
 
         {/* Merge Order Content — allowed even when settled */}
-        {orderType === "merge" && (() => {
-          const yesHeld = yesBalance ?? 0;
-          const noHeld = noBalance ?? 0;
-          const maxMergeable = Math.min(yesHeld, noHeld);
-          const mergeAmountNum = parseFloat(mergeAmount) || 0;
-          const usdcBack = mergeAmountNum; // 1 YES + 1 NO → 1 USDC
-          const hasEnough = mergeAmountNum > 0 && mergeAmountNum <= maxMergeable;
+        {orderType === "merge" &&
+          (() => {
+            const yesHeld = yesBalance ?? 0;
+            const noHeld = noBalance ?? 0;
+            const maxMergeable = Math.min(yesHeld, noHeld);
+            const mergeAmountNum = parseFloat(mergeAmount) || 0;
+            const usdcBack = mergeAmountNum; // 1 YES + 1 NO → 1 USDC
+            const hasEnough =
+              mergeAmountNum > 0 && mergeAmountNum <= maxMergeable;
 
-          return (
-            <div className="space-y-4">
-              {/* Token balance cards */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className={cn(
-                  "py-3 rounded-lg border text-left px-3.5",
-                  yesHeld > 0 ? "bg-success/8 border-success/30" : "bg-muted/20 border-border"
-                )}>
-                  <div className={cn("text-[10px] font-bold uppercase tracking-wider mb-0.5",
-                    yesHeld > 0 ? "text-success" : "text-muted-foreground"
-                  )}>YES</div>
-                  <div className="text-sm font-bold font-mono">{yesHeld > 0 ? yesHeld.toLocaleString() : "—"}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">held</div>
-                </div>
-                <div className={cn(
-                  "py-3 rounded-lg border text-left px-3.5",
-                  noHeld > 0 ? "bg-danger/8 border-danger/30" : "bg-muted/20 border-border"
-                )}>
-                  <div className={cn("text-[10px] font-bold uppercase tracking-wider mb-0.5",
-                    noHeld > 0 ? "text-danger" : "text-muted-foreground"
-                  )}>NO</div>
-                  <div className="text-sm font-bold font-mono">{noHeld > 0 ? noHeld.toLocaleString() : "—"}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">held</div>
-                </div>
-              </div>
-
-              {/* Amount input */}
-              <div className="space-y-1.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Label htmlFor="merge-amount" className="text-[11px] text-muted-foreground font-medium">
-                    Pairs to Merge
-                  </Label>
-                  <button
-                    onClick={() => setMergeAmount(String(maxMergeable))}
-                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
+            return (
+              <div className="space-y-4">
+                {/* Token balance cards */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div
+                    className={cn(
+                      "py-3 rounded-lg border text-left px-3.5",
+                      yesHeld > 0
+                        ? "bg-success/8 border-success/30"
+                        : "bg-muted/20 border-border"
+                    )}
                   >
-                    Max {maxMergeable.toLocaleString()}
-                  </button>
-                </div>
-                <Input
-                  id="merge-amount"
-                  type="number"
-                  placeholder="0.00"
-                  value={mergeAmount}
-                  onChange={(e) => setMergeAmount(e.target.value)}
-                  onWheel={(e) => e.currentTarget.blur()}
-                  className="h-11 bg-muted/30 border-border rounded-lg font-mono text-sm"
-                />
-                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                  {["1", "5", "10", "25"].map((val) => (
-                    <button
-                      key={val}
-                      onClick={() => setMergeAmount(val)}
+                    <div
                       className={cn(
-                        "py-2.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
-                        mergeAmount === val
-                          ? "border-amber-500/50 bg-amber-500/10 text-amber-400"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                        "text-[10px] font-bold uppercase tracking-wider mb-0.5",
+                        yesHeld > 0 ? "text-success" : "text-muted-foreground"
                       )}
                     >
-                      {val}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Receipt */}
-              <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
-                <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-muted-foreground">YES burned</span>
-                  <span className="break-all font-mono font-medium sm:text-right">
-                    {mergeAmountNum > 0 ? `${mergeAmountNum.toFixed(4)} YES` : "-"}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-muted-foreground">NO burned</span>
-                  <span className="break-all font-mono font-medium sm:text-right">
-                    {mergeAmountNum > 0 ? `${mergeAmountNum.toFixed(4)} NO` : "-"}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-xs text-muted-foreground">USDC received</span>
-                  <span className={cn(
-                    "break-all text-sm font-bold font-mono sm:text-right",
-                    usdcBack > 0 ? "text-amber-400" : "text-muted-foreground/40"
-                  )}>
-                    {usdcBack > 0 ? `$${usdcBack.toFixed(2)}` : "—"}
-                  </span>
-                </div>
-              </div>
-
-              {/* CTA */}
-              <button
-                onClick={handleMerge}
-                disabled={!indexerOk || !hasEnough || isSending}
-                className={cn(
-                  "w-full py-3.5 rounded-lg font-semibold text-sm text-white transition-all duration-150",
-                  "disabled:opacity-40 disabled:cursor-not-allowed",
-                  "bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-600/20"
-                )}
-              >
-                <span className="flex items-center justify-center gap-2">
-                  {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {isSending
-                    ? "Merging…"
-                    : maxMergeable <= 0
-                      ? "No Tokens to Merge"
-                      : `Merge${mergeAmount ? ` ${mergeAmount} pairs` : ""}`}
-                </span>
-              </button>
-            </div>
-          );
-        })()}
-
-        {/* Split Order Content — disabled when settled or expired */}
-        {!isSettled && orderType === "split" && (() => {
-          if (isExpired) return (
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <div className="h-10 w-10 rounded-full bg-amber-500/15 flex items-center justify-center">
-                <Lock className="h-5 w-5 text-amber-400" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-semibold">Market deadline passed</p>
-                <p className="text-xs text-muted-foreground">Splitting is disabled. You can still merge YES+NO pairs back to USDC, or wait for the market creator to resolve and claim your payout.</p>
-              </div>
-            </div>
-          );
-          const splitNum = parseFloat(splitAmount) || 0;
-          const hasEnough = splitNum > 0 && splitNum <= balance;
-
-          return (
-            <div className="space-y-4">
-              {/* USDC balance card */}
-              <div className={cn(
-                "py-3 rounded-lg border px-3.5 transition-all",
-                balance > 0 ? "bg-muted/20 border-border" : "bg-muted/10 border-border/50"
-              )}>
-                <div className={cn("text-[10px] font-bold uppercase tracking-wider mb-1", balance > 0 ? "text-muted-foreground" : "text-muted-foreground/40")}>USDC</div>
-                <div className={cn("text-lg font-bold font-mono leading-none", balance > 0 ? "text-foreground" : "text-muted-foreground/30")}>
-                  {balance > 0 ? `$${balance.toLocaleString()}` : "—"}
-                </div>
-                <div className="text-[10px] text-muted-foreground/40 mt-1">available to split</div>
-              </div>
-
-              {/* Amount input */}
-              <div className="space-y-1.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Label htmlFor="split-amount" className="text-[11px] text-muted-foreground font-medium">
-                    Amount (USDC)
-                  </Label>
-                  <button
-                    onClick={() => setSplitAmount(String(balance))}
-                    className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
+                      YES
+                    </div>
+                    <div className="text-sm font-bold font-mono">
+                      {yesHeld > 0 ? yesHeld.toLocaleString() : "—"}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      held
+                    </div>
+                  </div>
+                  <div
+                    className={cn(
+                      "py-3 rounded-lg border text-left px-3.5",
+                      noHeld > 0
+                        ? "bg-danger/8 border-danger/30"
+                        : "bg-muted/20 border-border"
+                    )}
                   >
-                    Max ${balance.toLocaleString()}
-                  </button>
+                    <div
+                      className={cn(
+                        "text-[10px] font-bold uppercase tracking-wider mb-0.5",
+                        noHeld > 0 ? "text-danger" : "text-muted-foreground"
+                      )}
+                    >
+                      NO
+                    </div>
+                    <div className="text-sm font-bold font-mono">
+                      {noHeld > 0 ? noHeld.toLocaleString() : "—"}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      held
+                    </div>
+                  </div>
                 </div>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium select-none">$</span>
+
+                {/* Amount input */}
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Label
+                      htmlFor="merge-amount"
+                      className="text-[11px] text-muted-foreground font-medium"
+                    >
+                      Pairs to Merge
+                    </Label>
+                    <button
+                      onClick={() => setMergeAmount(String(maxMergeable))}
+                      className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
+                    >
+                      Max {maxMergeable.toLocaleString()}
+                    </button>
+                  </div>
                   <Input
-                    id="split-amount"
+                    id="merge-amount"
                     type="number"
                     placeholder="0.00"
-                    value={splitAmount}
-                    onChange={(e) => setSplitAmount(e.target.value)}
+                    value={mergeAmount}
+                    onChange={(e) => setMergeAmount(e.target.value)}
                     onWheel={(e) => e.currentTarget.blur()}
-                    className="pl-7 h-11 bg-muted/30 border-border rounded-lg font-mono text-sm"
+                    className="h-11 bg-muted/30 border-border rounded-lg font-mono text-sm"
                   />
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                    {["1", "5", "10", "25"].map((val) => (
+                      <button
+                        key={val}
+                        onClick={() => setMergeAmount(val)}
+                        className={cn(
+                          "py-2.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
+                          mergeAmount === val
+                            ? "border-amber-500/50 bg-amber-500/10 text-amber-400"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                        )}
+                      >
+                        {val}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                  {["10", "25", "50", "100"].map((val) => (
-                    <button
-                      key={val}
-                      onClick={() => setSplitAmount(val)}
+
+                {/* Receipt */}
+                <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
+                  <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-muted-foreground">YES burned</span>
+                    <span className="break-all font-mono font-medium sm:text-right">
+                      {mergeAmountNum > 0
+                        ? `${mergeAmountNum.toFixed(4)} YES`
+                        : "-"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-muted-foreground">NO burned</span>
+                    <span className="break-all font-mono font-medium sm:text-right">
+                      {mergeAmountNum > 0
+                        ? `${mergeAmountNum.toFixed(4)} NO`
+                        : "-"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-xs text-muted-foreground">
+                      USDC received
+                    </span>
+                    <span
                       className={cn(
-                        "py-2.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
-                        splitAmount === val
-                          ? "border-violet-500/50 bg-violet-500/10 text-violet-400"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                        "break-all text-sm font-bold font-mono sm:text-right",
+                        usdcBack > 0
+                          ? "text-amber-400"
+                          : "text-muted-foreground/40"
                       )}
                     >
-                      ${val}
+                      {usdcBack > 0 ? `$${usdcBack.toFixed(2)}` : "—"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* CTA */}
+                <button
+                  onClick={handleMerge}
+                  disabled={!indexerOk || !hasEnough || isSending}
+                  className={cn(
+                    "w-full py-3.5 rounded-lg font-semibold text-sm text-white transition-all duration-150",
+                    "disabled:opacity-40 disabled:cursor-not-allowed",
+                    "bg-emerald-600 hover:bg-emerald-500 shadow-sm shadow-emerald-600/20"
+                  )}
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {isSending
+                      ? "Merging…"
+                      : maxMergeable <= 0
+                        ? "No Tokens to Merge"
+                        : `Merge${mergeAmount ? ` ${mergeAmount} pairs` : ""}`}
+                  </span>
+                </button>
+              </div>
+            );
+          })()}
+
+        {/* Split Order Content — disabled when settled or expired */}
+        {!isSettled &&
+          orderType === "split" &&
+          (() => {
+            if (isExpired)
+              return (
+                <div className="flex flex-col items-center gap-3 py-6 text-center">
+                  <div className="h-10 w-10 rounded-full bg-amber-500/15 flex items-center justify-center">
+                    <Lock className="h-5 w-5 text-amber-400" />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold">
+                      Market deadline passed
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Splitting is disabled. You can still merge YES+NO pairs
+                      back to USDC, or wait for the market creator to resolve
+                      and claim your payout.
+                    </p>
+                  </div>
+                </div>
+              );
+            const splitNum = parseFloat(splitAmount) || 0;
+            const hasEnough = splitNum > 0 && splitNum <= balance;
+
+            return (
+              <div className="space-y-4">
+                {/* USDC balance card */}
+                <div
+                  className={cn(
+                    "py-3 rounded-lg border px-3.5 transition-all",
+                    balance > 0
+                      ? "bg-muted/20 border-border"
+                      : "bg-muted/10 border-border/50"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "text-[10px] font-bold uppercase tracking-wider mb-1",
+                      balance > 0
+                        ? "text-muted-foreground"
+                        : "text-muted-foreground/40"
+                    )}
+                  >
+                    USDC
+                  </div>
+                  <div
+                    className={cn(
+                      "text-lg font-bold font-mono leading-none",
+                      balance > 0
+                        ? "text-foreground"
+                        : "text-muted-foreground/30"
+                    )}
+                  >
+                    {balance > 0 ? `$${balance.toLocaleString()}` : "—"}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground/40 mt-1">
+                    available to split
+                  </div>
+                </div>
+
+                {/* Amount input */}
+                <div className="space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Label
+                      htmlFor="split-amount"
+                      className="text-[11px] text-muted-foreground font-medium"
+                    >
+                      Amount (USDC)
+                    </Label>
+                    <button
+                      onClick={() => setSplitAmount(String(balance))}
+                      className="text-[10px] text-muted-foreground hover:text-foreground transition-colors underline-offset-2 hover:underline"
+                    >
+                      Max ${balance.toLocaleString()}
                     </button>
-                  ))}
+                  </div>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium select-none">
+                      $
+                    </span>
+                    <Input
+                      id="split-amount"
+                      type="number"
+                      placeholder="0.00"
+                      value={splitAmount}
+                      onChange={(e) => setSplitAmount(e.target.value)}
+                      onWheel={(e) => e.currentTarget.blur()}
+                      className="pl-7 h-11 bg-muted/30 border-border rounded-lg font-mono text-sm"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                    {["10", "25", "50", "100"].map((val) => (
+                      <button
+                        key={val}
+                        onClick={() => setSplitAmount(val)}
+                        className={cn(
+                          "py-2.5 text-[11px] font-medium rounded-md border border-border bg-muted/30 transition-all",
+                          splitAmount === val
+                            ? "border-violet-500/50 bg-violet-500/10 text-violet-400"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                        )}
+                      >
+                        ${val}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Receipt */}
-              <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
-                <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-muted-foreground shrink-0">Rate</span>
-                  <span className="font-mono font-medium sm:ml-2 sm:text-right">1 USDC = 1 YES + 1 NO</span>
+                {/* Receipt */}
+                <div className="rounded-lg border border-border bg-muted/20 divide-y divide-border">
+                  <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-muted-foreground shrink-0">Rate</span>
+                    <span className="font-mono font-medium sm:ml-2 sm:text-right">
+                      1 USDC = 1 YES + 1 NO
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-muted-foreground shrink-0">
+                      USDC locked
+                    </span>
+                    <span className="break-all font-mono font-medium sm:ml-2 sm:text-right">
+                      {splitNum > 0 ? `$${splitNum.toFixed(2)}` : "—"}
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1 px-3.5 py-2.5">
+                    <span className="text-xs text-muted-foreground">
+                      You receive
+                    </span>
+                    <span
+                      className={cn(
+                        "text-sm font-bold font-mono",
+                        splitNum > 0
+                          ? "text-violet-400"
+                          : "text-muted-foreground/40"
+                      )}
+                    >
+                      {splitNum > 0
+                        ? `${splitNum.toFixed(2)} YES + ${splitNum.toFixed(2)} NO`
+                        : "—"}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-muted-foreground shrink-0">USDC locked</span>
-                  <span className="break-all font-mono font-medium sm:ml-2 sm:text-right">
-                    {splitNum > 0 ? `$${splitNum.toFixed(2)}` : "—"}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1 px-3.5 py-2.5">
-                  <span className="text-xs text-muted-foreground">You receive</span>
-                  <span className={cn(
-                    "text-sm font-bold font-mono",
-                    splitNum > 0 ? "text-violet-400" : "text-muted-foreground/40"
-                  )}>
-                    {splitNum > 0 ? `${splitNum.toFixed(2)} YES + ${splitNum.toFixed(2)} NO` : "—"}
-                  </span>
-                </div>
-              </div>
 
-              {/* CTA */}
-              <button
-                onClick={handleSplit}
-                disabled={!indexerOk || !hasEnough || isSending}
-                className={cn(
-                  "w-full py-3.5 rounded-lg font-semibold text-sm text-white transition-all duration-150",
-                  "disabled:opacity-40 disabled:cursor-not-allowed",
-                  "bg-violet-500 hover:brightness-110 shadow-sm shadow-violet-500/20"
-                )}
-              >
-                <span className="flex items-center justify-center gap-2">
-                  {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {isSending
-                    ? "Splitting…"
-                    : `Split${splitAmount ? ` $${splitAmount}` : ""}`}
-                </span>
-              </button>
-            </div>
-          );
-        })()}
+                {/* CTA */}
+                <button
+                  onClick={handleSplit}
+                  disabled={!indexerOk || !hasEnough || isSending}
+                  className={cn(
+                    "w-full py-3.5 rounded-lg font-semibold text-sm text-white transition-all duration-150",
+                    "disabled:opacity-40 disabled:cursor-not-allowed",
+                    "bg-violet-500 hover:brightness-110 shadow-sm shadow-violet-500/20"
+                  )}
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    {isSending && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {isSending
+                      ? "Splitting…"
+                      : `Split${splitAmount ? ` $${splitAmount}` : ""}`}
+                  </span>
+                </button>
+              </div>
+            );
+          })()}
 
         {/* Balance strip
         <div className="border-t border-border px-4 py-3 flex items-center justify-between bg-muted/10">

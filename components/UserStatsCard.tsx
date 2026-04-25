@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { buildClaimFundsInstruction } from '@/lib/blockchain/market';
 import { SOLANA_NETWORK } from '@/lib/constants';
+import { classifyTxError, isUserRejection } from '@/lib/blockchain/verify-tx';
 
 interface UserStatsCardProps {
   marketId: number;
@@ -83,7 +84,35 @@ export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint, isSettl
       });
       setRefreshTrigger(p => p + 1);
     } catch (err) {
-      toast.error('Claim failed', { description: err instanceof Error ? err.message : 'Unknown error' });
+      if (isUserRejection(err)) {
+        toast.info('Transaction cancelled', { description: 'You rejected the transaction in your wallet.' });
+        return;
+      }
+
+      const verifyToastId = toast.loading('Verifying transaction on-chain…');
+      try {
+        const outcome = await classifyTxError(err);
+        if (outcome.kind === 'success') {
+          toast.success('Funds claimed!', {
+            description: claimableUsdc > 0
+              ? `$${claimableUsdc.toFixed(2)} USDC transferred to your wallet.`
+              : 'Your claimable tokens have been transferred to your wallet.',
+            ...(outcome.signature ? { action: explorerAction(outcome.signature) } : {}),
+          });
+          setRefreshTrigger(p => p + 1);
+        } else if (outcome.kind === 'pending') {
+          toast.warning('Claim transaction submitted', {
+            description: outcome.hint,
+            ...(outcome.signature ? { action: explorerAction(outcome.signature) } : {}),
+          });
+        } else if (outcome.kind === 'failed') {
+          toast.error('Claim failed', { description: outcome.reason });
+        } else {
+          toast.info('Transaction cancelled');
+        }
+      } finally {
+        toast.dismiss(verifyToastId);
+      }
     }
   };
 

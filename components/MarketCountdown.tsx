@@ -1,30 +1,36 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from "react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function getTimeLeft(target: Date) {
   const diff = Math.max(0, Math.floor((target.getTime() - Date.now()) / 1000));
   return {
-    days:    Math.floor(diff / 86_400),
-    hours:   Math.floor((diff % 86_400) / 3_600),
+    days: Math.floor(diff / 86_400),
+    hours: Math.floor((diff % 86_400) / 3_600),
     minutes: Math.floor((diff % 3_600) / 60),
     seconds: diff % 60,
-    total:   diff,
+    total: diff,
   };
 }
 
 function pad2(n: number) {
-  return String(n).padStart(2, '0');
+  return String(n).padStart(2, "0");
 }
 
 // ── RollingNum ────────────────────────────────────────────────────────────────
 // Inline number that smoothly rolls upward when its value changes.
 
-function RollingNum({ value, className }: { value: string; className?: string }) {
-  const [curr, setCurr]   = useState(value);
-  const [prev, setPrev]   = useState<string | null>(null);
+function RollingNum({
+  value,
+  className,
+}: {
+  value: string;
+  className?: string;
+}) {
+  const [curr, setCurr] = useState(value);
+  const [prev, setPrev] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -40,21 +46,30 @@ function RollingNum({ value, className }: { value: string; className?: string })
 
   return (
     <span
-      className={`relative inline-block overflow-hidden align-bottom ${className ?? ''}`}
+      className={`relative inline-block overflow-hidden align-bottom ${className ?? ""}`}
       style={{ minWidth: `${curr.length}ch` }}
     >
       {prev !== null && (
         <span
           className="absolute inset-0 flex items-center justify-center"
-          style={{ animation: 'mc-roll-out 0.18s ease-in forwards', pointerEvents: 'none' }}
+          style={{
+            animation: "mc-roll-out 0.18s ease-in forwards",
+            pointerEvents: "none",
+          }}
         >
           {prev}
         </span>
       )}
       <span
-        style={prev !== null
-          ? { animation: 'mc-roll-in 0.22s ease-out forwards', opacity: 0, display: 'block' }
-          : { display: 'block' }}
+        style={
+          prev !== null
+            ? {
+                animation: "mc-roll-in 0.22s ease-out forwards",
+                opacity: 0,
+                display: "block",
+              }
+            : { display: "block" }
+        }
       >
         {curr}
       </span>
@@ -72,7 +87,10 @@ interface MarketCountdownProps {
 // ── Inline variant (original) ─────────────────────────────────────────────────
 // Renders as a plain inline text fragment.
 
-export function MarketCountdown({ targetDate, isSettled }: MarketCountdownProps) {
+export function MarketCountdown({
+  targetDate,
+  isSettled,
+}: MarketCountdownProps) {
   const [time, setTime] = useState(() => getTimeLeft(targetDate));
 
   useEffect(() => {
@@ -86,13 +104,17 @@ export function MarketCountdown({ targetDate, isSettled }: MarketCountdownProps)
   }
 
   if (time.total === 0) {
-    return <span className="text-amber-400 font-medium">Ready to resolve</span>;
+    return (
+      <span className="text-amber-400 font-medium">Awaiting settlement</span>
+    );
   }
 
   const urgent = time.total < 3_600;
 
   return (
-    <span className={`font-mono font-medium tabular-nums ${urgent ? 'text-red-400' : 'text-foreground/80'}`}>
+    <span
+      className={`font-mono font-medium tabular-nums ${urgent ? "text-red-400" : "text-foreground/80"}`}
+    >
       {time.days > 0 && (
         <>
           <RollingNum value={String(time.days)} />
@@ -117,7 +139,10 @@ export function MarketCountdown({ targetDate, isSettled }: MarketCountdownProps)
 // Shows each time unit as a minimal segmented chip with a rolling digit and
 // a label underneath. Designed for the market header's dedicated deadline row.
 
-export function MarketCountdownBlocks({ targetDate, isSettled }: MarketCountdownProps) {
+export function MarketCountdownBlocks({
+  targetDate,
+  isSettled,
+}: MarketCountdownProps) {
   const [time, setTime] = useState(() => getTimeLeft(targetDate));
 
   useEffect(() => {
@@ -139,7 +164,7 @@ export function MarketCountdownBlocks({ targetDate, isSettled }: MarketCountdown
     return (
       <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-400">
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-        Ready to resolve
+        Awaiting settlement
       </span>
     );
   }
@@ -148,10 +173,12 @@ export function MarketCountdownBlocks({ targetDate, isSettled }: MarketCountdown
 
   type Segment = { value: string; label: string };
   const segments: Segment[] = [
-    ...(time.days > 0 ? [{ value: String(time.days).padStart(2, '0'), label: 'DAY' }] : []),
-    { value: pad2(time.hours), label: 'HR' },
-    { value: pad2(time.minutes), label: 'MIN' },
-    { value: pad2(time.seconds), label: 'SEC' },
+    ...(time.days > 0
+      ? [{ value: String(time.days).padStart(2, "0"), label: "DAY" }]
+      : []),
+    { value: pad2(time.hours), label: "HR" },
+    { value: pad2(time.minutes), label: "MIN" },
+    { value: pad2(time.seconds), label: "SEC" },
   ];
 
   return (
@@ -162,17 +189,19 @@ export function MarketCountdownBlocks({ targetDate, isSettled }: MarketCountdown
           <div className="relative flex items-center">
             <div
               className={[
-                'flex h-[1.75rem] min-w-[2rem] items-center justify-center rounded-md border px-1.5',
-                'font-mono text-[13px] font-semibold tabular-nums tracking-tight',
+                "flex h-[1.75rem] min-w-[2rem] items-center justify-center rounded-md border px-1.5",
+                "font-mono text-[13px] font-semibold tabular-nums tracking-tight",
                 urgent
-                  ? 'bg-red-500/10 border-red-500/20 text-red-400'
-                  : 'bg-muted/25 dark:bg-muted/10 border-border/20 dark:border-border/[0.12] text-foreground/75',
-              ].join(' ')}
+                  ? "bg-red-500/10 border-red-500/20 text-red-400"
+                  : "bg-muted/25 dark:bg-muted/10 border-border/20 dark:border-border/[0.12] text-foreground/75",
+              ].join(" ")}
             >
               <RollingNum value={value} />
             </div>
             {i < segments.length - 1 && (
-              <span className={`absolute -right-[5px] text-[10px] font-bold leading-none select-none ${urgent ? 'text-red-400/40' : 'text-muted-foreground/25'}`}>
+              <span
+                className={`absolute -right-[5px] text-[10px] font-bold leading-none select-none ${urgent ? "text-red-400/40" : "text-muted-foreground/25"}`}
+              >
                 :
               </span>
             )}
