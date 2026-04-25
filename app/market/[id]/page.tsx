@@ -438,6 +438,7 @@ const MarketDetail = () => {
 
   // ── Market found — render detail ───────────────────────────────────────────
   const marketIdStr = market.marketId.toString();
+  const isMarketCreator = userPubkey?.trim() === market.authority?.trim();
   const isAwaitingSettlement =
     !market.isSettled && new Date() >= market.endDate;
 
@@ -694,9 +695,40 @@ const MarketDetail = () => {
                     );
                   })()}
 
-                {userPubkey?.trim() === market.authority?.trim() &&
+                {!market.isSettled &&
+                  isAwaitingSettlement &&
+                  !isMarketCreator && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/8 p-4 sm:p-5">
+                      <div className="flex min-w-0 items-start gap-3.5">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
+                          <Lock className="h-4 w-4 text-amber-400" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="mb-0.5 text-[10px] font-medium uppercase tracking-widest text-amber-200/55">
+                            Awaiting creator settlement
+                          </p>
+                          <p className="break-words text-sm font-semibold text-amber-50 sm:text-base">
+                            Trading closed{" "}
+                            {formatDistanceToNow(market.endDate, {
+                              addSuffix: true,
+                            })}
+                          </p>
+                          <p className="mt-1 text-xs text-amber-100/80">
+                            The market creator still needs to settle this
+                            market. Until then, the order book, open orders,
+                            and payouts stay locked.
+                          </p>
+                        </div>
+                      </div>
+                      <span className="shrink-0 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-200">
+                        Read-only
+                      </span>
+                    </div>
+                  )}
+
+                {isMarketCreator &&
                   !market.isSettled &&
-                  new Date() >= market.endDate &&
+                  isAwaitingSettlement &&
                   (() => {
                     const autoOutcome: "YES" | "NO" | null = (() => {
                       if (resolution)
@@ -1063,6 +1095,8 @@ const MarketDetail = () => {
                         selectedTokenType={selectedTokenType}
                         userPubkey={userPubkey}
                         isTradingClosed={isAwaitingSettlement}
+                        marketEndDate={market.endDate}
+                        isMarketCreator={isMarketCreator}
                       />
                       {/* <div className="flex items-center gap-3 pt-2">
                         <div className="flex-1 h-px bg-violet-500/15" />
@@ -1084,7 +1118,7 @@ const MarketDetail = () => {
                           </p>
                           <p className="text-xs text-muted-foreground/35">
                             {isAwaitingSettlement
-                              ? "Trading is paused until this market is settled"
+                              ? "The order book stays locked until the creator settles this market"
                               : "Trades appear here when the order book matches"}
                           </p>
                         </div>
@@ -1301,6 +1335,7 @@ const MarketDetail = () => {
                         userPubkey={userPubkey}
                         isSettled={market.isSettled}
                         marketEndDate={market.endDate}
+                        isMarketCreator={isMarketCreator}
                       />
                     </CardContent>
                   </Card>
@@ -1323,6 +1358,7 @@ const MarketDetail = () => {
                   isSettled={market.isSettled}
                   winningOutcome={market.winningOutcome}
                   marketEndDate={market.endDate}
+                  isMarketCreator={isMarketCreator}
                 />
 
                 {/* User Position Stats */}
@@ -1335,8 +1371,7 @@ const MarketDetail = () => {
                 />
 
                 {/* ── Creator Actions Panel — Close Market only ───────── */}
-                {userPubkey?.trim() === market.authority?.trim() &&
-                  market.isSettled && (
+                {isMarketCreator && market.isSettled && (
                     <div className="panel-card space-y-3 p-4 sm:p-5">
                       <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                         Creator Actions

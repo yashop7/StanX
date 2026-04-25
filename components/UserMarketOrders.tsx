@@ -22,6 +22,7 @@ interface Props {
   userPubkey: string | undefined;
   isSettled?: boolean;
   marketEndDate?: Date;
+  isMarketCreator?: boolean;
 }
 
 function fmtQty(n: number): string {
@@ -37,6 +38,7 @@ export function UserMarketOrders({
   userPubkey,
   isSettled,
   marketEndDate,
+  isMarketCreator = false,
 }: Props) {
   const [orders, setOrders] = useState<BackendOrder[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,6 +52,18 @@ export function UserMarketOrders({
   const { indexerOk } = useIndexerHealth();
   const isCancellationClosed =
     !isSettled && !!marketEndDate && new Date() >= marketEndDate;
+  const closedAtLabel = marketEndDate
+    ? marketEndDate.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+  const cancellationClosedDescription = isMarketCreator
+    ? "Trading is over and your open orders stay frozen until you settle this market."
+    : "Your open orders stay frozen because the market creator has not settled this market yet.";
 
   async function load() {
     if (!userPubkey) return;
@@ -105,8 +119,7 @@ export function UserMarketOrders({
     }
     if (isCancellationClosed) {
       toast.error("Order cancellations are closed.", {
-        description:
-          "This market has reached its settlement deadline. Resting orders stay locked until the market is settled.",
+        description: `${cancellationClosedDescription} They can't be cancelled until settlement is posted.`,
       });
       return;
     }
@@ -186,10 +199,16 @@ export function UserMarketOrders({
       {isCancellationClosed && (
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/8 p-3 text-xs text-amber-100/85">
           <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
-          <span>
-            Settlement deadline reached. Open orders are locked and can no
-            longer be cancelled while this market waits for settlement.
-          </span>
+          <div className="space-y-1">
+            <p className="font-semibold text-amber-300">Open orders locked</p>
+            <p>
+              {closedAtLabel
+                ? `Trading closed on ${closedAtLabel}.`
+                : "Trading is closed."}{" "}
+              {cancellationClosedDescription} They can no longer be cancelled
+              while the market waits for settlement.
+            </p>
+          </div>
         </div>
       )}
 
@@ -223,7 +242,9 @@ export function UserMarketOrders({
               const cancelDisabled =
                 isCancelling || !indexerOk || isCancellationClosed;
               const cancelTitle = isCancellationClosed
-                ? "Settlement deadline reached — this order is locked until the market is settled"
+                ? isMarketCreator
+                  ? "Settlement pending — your order stays locked until you settle this market"
+                  : "Settlement pending — this order stays locked until the creator settles the market"
                 : !indexerOk
                   ? "Trading paused — indexer syncing"
                   : "Cancel order";
@@ -346,7 +367,9 @@ export function UserMarketOrders({
                   const cancelDisabled =
                     isCancelling || !indexerOk || isCancellationClosed;
                   const cancelTitle = isCancellationClosed
-                    ? "Settlement deadline reached — this order is locked until the market is settled"
+                    ? isMarketCreator
+                      ? "Settlement pending — your order stays locked until you settle this market"
+                      : "Settlement pending — this order stays locked until the creator settles the market"
                     : !indexerOk
                       ? "Trading paused — indexer syncing"
                       : "Cancel order";

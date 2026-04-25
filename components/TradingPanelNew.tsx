@@ -51,6 +51,8 @@ interface TradingPanelNewProps {
   winningOutcome?: "YES" | "NO" | "NEITHER" | null;
   /** The market's settlement deadline — used to block new orders/splits after expiry */
   marketEndDate?: Date;
+  /** True when the connected wallet is the market creator */
+  isMarketCreator?: boolean;
 }
 
 type OrderType = "market" | "limit" | "merge" | "split";
@@ -67,8 +69,9 @@ export const TradingPanelNew = ({
   isSettled,
   winningOutcome,
   marketEndDate,
+  isMarketCreator,
 }: TradingPanelNewProps) => {
-  const isExpired =
+  const isAwaitingSettlement =
     !isSettled && !!marketEndDate && new Date() >= marketEndDate;
   const settlementDeadlineLabel = marketEndDate
     ? marketEndDate.toLocaleString(undefined, {
@@ -79,6 +82,21 @@ export const TradingPanelNew = ({
         minute: "2-digit",
       })
     : null;
+  const settlementPendingSummary = isMarketCreator
+    ? "You're the market creator, so the next step is to settle this market."
+    : "This market is waiting on the creator to settle it.";
+  const settlementPendingTradeLock = `${settlementPendingSummary} The order book stays locked until the market is settled.`;
+  const settlementPendingMergeHint = isMarketCreator
+    ? "You can still merge YES and NO token pairs back to USDC while you prepare the final settlement."
+    : "You can still merge YES and NO token pairs back to USDC while the market waits for settlement.";
+  const awaitingSettlementTiles = [
+    { label: "Order book", value: "Locked" },
+    {
+      label: isMarketCreator ? "Your action" : "Next step",
+      value: isMarketCreator ? "Settle market" : "Creator settles",
+    },
+    { label: "Still open", value: "Merge YES + NO" },
+  ] as const;
   const [orderType, setOrderType] = useState<OrderType>("market");
   const [action, setAction] = useState<"buy" | "sell">("buy");
   const [tokenType, setTokenType] = useState<"yes" | "no">("yes");
@@ -154,10 +172,9 @@ export const TradingPanelNew = ({
     let orderStartTime = 0;
 
     try {
-      if (isExpired) {
+      if (isAwaitingSettlement) {
         toast.error("Order entry is closed.", {
-          description:
-            "This market has reached its settlement deadline. New orders stay disabled until the market is settled.",
+          description: settlementPendingTradeLock,
         });
         return;
       }
@@ -405,10 +422,9 @@ export const TradingPanelNew = ({
     if (submitting.current) return;
     submitting.current = true;
     try {
-      if (isExpired) {
+      if (isAwaitingSettlement) {
         toast.error("Splitting is closed.", {
-          description:
-            "The settlement deadline has passed. You can still merge YES and NO token pairs back to USDC while the market awaits settlement.",
+          description: settlementPendingMergeHint,
         });
         return;
       }
@@ -521,9 +537,16 @@ export const TradingPanelNew = ({
     <div className="panel-card min-w-0 overflow-hidden">
       {/* Header */}
       <div className="flex flex-col items-start gap-2 border-b border-border px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-        <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Place Order
-        </h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            {isAwaitingSettlement ? "Awaiting Settlement" : "Place Order"}
+          </h3>
+          {isAwaitingSettlement && (
+            <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+              Read-only
+            </span>
+          )}
+        </div>
         {/* price pills */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-success/10 text-success">
@@ -600,20 +623,52 @@ export const TradingPanelNew = ({
         {/* ── Active trading UI (hidden when settled, except merge) ── */}
         {!isSettled && (
           <>
-            {isExpired && (
-              <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/8 px-3 py-3 text-xs text-amber-100/85">
-                <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
-                <div className="space-y-1">
-                  <p className="font-semibold text-amber-300">
-                    Settlement deadline reached
-                  </p>
-                  <p>
-                    {settlementDeadlineLabel
-                      ? `This market closed for trading on ${settlementDeadlineLabel}.`
-                      : "This market has closed for trading."}{" "}
-                    New market orders, limit orders, splits, and order
-                    cancellations are disabled until settlement.
-                  </p>
+            {isAwaitingSettlement && (
+              <div className="space-y-3 rounded-xl border border-amber-500/20 bg-amber-500/8 px-3 py-3 text-xs text-amber-100/85">
+                <div className="flex items-start gap-2">
+                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
+                  <div className="space-y-1">
+                    <p className="font-semibold text-amber-300">
+                      {isMarketCreator
+                        ? "Settlement required"
+                        : "Awaiting creator settlement"}
+                    </p>
+                    <p>
+                      {settlementDeadlineLabel
+                        ? `Trading closed on ${settlementDeadlineLabel}.`
+                        : "Trading is closed."}{" "}
+                      {settlementPendingTradeLock}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {awaitingSettlementTiles.map((tile) => (
+                    <div
+                      key={tile.label}
+                      className="rounded-lg border border-amber-500/15 bg-background/40 px-3 py-2.5"
+                    >
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-200/55">
+                        {tile.label}
+                      </p>
+                      <p className="mt-1 text-[11px] font-semibold text-amber-50">
+                        {tile.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {orderType !== "merge" && (
+                    <button
+                      onClick={() => setOrderType("merge")}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold text-amber-100 transition-colors hover:bg-amber-500/15"
+                    >
+                      <Layers className="h-3.5 w-3.5" />
+                      Open Merge
+                    </button>
+                  )}
+                  <span className="text-[11px] text-amber-100/70">
+                    Claims open once the market is settled.
+                  </span>
                 </div>
               </div>
             )}
@@ -629,7 +684,8 @@ export const TradingPanelNew = ({
             {/* Tab bar — underline style */}
             <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-5 sm:border-b sm:border-border">
               {orderTypes.map((type) => {
-                const isDisabled = isExpired && type.value !== "merge";
+                const isDisabled =
+                  isAwaitingSettlement && type.value !== "merge";
                 return (
                   <button
                     key={type.value}
@@ -637,7 +693,7 @@ export const TradingPanelNew = ({
                     disabled={isDisabled}
                     title={
                       isDisabled
-                        ? "Settlement deadline reached — this action is closed until settlement."
+                        ? "Settlement pending — this action is closed until the market is settled."
                         : undefined
                     }
                     className={cn(
@@ -658,18 +714,22 @@ export const TradingPanelNew = ({
             {/* Market & Limit Order Content */}
             {(orderType === "market" || orderType === "limit") && (
               <>
-                {isExpired && (
+                {isAwaitingSettlement && (
                   <div className="rounded-lg border border-border/30 bg-muted/20 px-3 py-2.5 text-[11px] text-muted-foreground">
-                    Order entry is closed for this market. You can still review
-                    the last price snapshot below or switch to{" "}
+                    Order entry is closed while this market awaits settlement.
+                    You can still review the final price snapshot below or
+                    switch to{" "}
                     <span className="font-semibold text-foreground">Merge</span>{" "}
                     to turn paired YES and NO tokens back into USDC.
                   </div>
                 )}
 
                 <fieldset
-                  disabled={isExpired}
-                  className={cn("space-y-4", isExpired && "opacity-45")}
+                  disabled={isAwaitingSettlement}
+                  className={cn(
+                    "space-y-4",
+                    isAwaitingSettlement && "opacity-45"
+                  )}
                 >
                   {/* BUY / SELL toggle */}
 
@@ -932,7 +992,7 @@ export const TradingPanelNew = ({
                   <button
                     onClick={handleTrade}
                     disabled={
-                      isExpired ||
+                      isAwaitingSettlement ||
                       !indexerOk ||
                       !amount ||
                       parseFloat(amount) <= 0 ||
@@ -1131,7 +1191,7 @@ export const TradingPanelNew = ({
         {!isSettled &&
           orderType === "split" &&
           (() => {
-            if (isExpired)
+            if (isAwaitingSettlement)
               return (
                 <div className="flex flex-col items-center gap-3 py-6 text-center">
                   <div className="h-10 w-10 rounded-full bg-amber-500/15 flex items-center justify-center">
@@ -1139,12 +1199,12 @@ export const TradingPanelNew = ({
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-semibold">
-                      Market deadline passed
+                      Awaiting settlement
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Splitting is disabled. You can still merge YES+NO pairs
-                      back to USDC, or wait for the market creator to resolve
-                      and claim your payout.
+                      Splitting is disabled. {settlementPendingSummary} You can
+                      still merge YES+NO pairs back to USDC while you wait for
+                      payouts to unlock.
                     </p>
                   </div>
                 </div>

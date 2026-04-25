@@ -23,6 +23,8 @@ interface OrderBookProps {
   userPubkey?: string;
   /** True when settlement deadline has passed and the book is read-only */
   isTradingClosed?: boolean;
+  marketEndDate?: Date;
+  isMarketCreator?: boolean;
 }
 
 interface PriceLevel {
@@ -89,7 +91,7 @@ const StatusDot = ({
       <span className="flex items-center gap-1">
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
         <span className="text-[10px] font-mono font-medium text-amber-400/80">
-          Closed
+          Locked
         </span>
       </span>
     );
@@ -131,9 +133,23 @@ export const OrderBook = ({
   selectedTokenType = "yes",
   userPubkey,
   isTradingClosed = false,
+  marketEndDate,
+  isMarketCreator = false,
 }: OrderBookProps) => {
   const numericId = parseInt(marketId, 10);
   const validId = isNaN(numericId) ? null : numericId;
+  const tradingClosedLabel = marketEndDate
+    ? marketEndDate.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })
+    : null;
+  const closedMessage = isMarketCreator
+    ? "You're the market creator. Settle this market to unlock claims and finish the trading cycle."
+    : "This market is waiting on the creator to settle it before claims and payouts can open.";
 
   const { orderbook, status } = useOrderbookWs(validId);
 
@@ -218,11 +234,16 @@ export const OrderBook = ({
       {isTradingClosed && (
         <div className="mx-3 mt-3 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/8 px-3 py-2.5 text-xs text-amber-100/85 sm:mx-4">
           <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
-          <span>
-            Settlement deadline reached. The order book is read-only now, so no
-            new orders, fills, or cancellations can happen until this market is
-            settled.
-          </span>
+          <div className="space-y-1">
+            <p className="font-semibold text-amber-300">Order book locked</p>
+            <p>
+              {tradingClosedLabel
+                ? `Trading closed on ${tradingClosedLabel}.`
+                : "Trading is closed."}{" "}
+              {closedMessage} No new orders, matches, or cancellations can
+              happen until then.
+            </p>
+          </div>
         </div>
       )}
 
@@ -267,7 +288,7 @@ export const OrderBook = ({
               </p>
               <p className="text-[10px] text-muted-foreground/30">
                 {isTradingClosed
-                  ? "No bids or asks were left on the book when trading stopped"
+                  ? "No bids or asks were left on the book when trading locked for settlement"
                   : "No open bids or asks right now"}
               </p>
             </div>
