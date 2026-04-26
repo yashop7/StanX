@@ -699,36 +699,24 @@ const MarketDetail = () => {
                 {!market.isSettled &&
                   isAwaitingSettlement &&
                   !isMarketCreator && (
-                    <div className="rounded-xl border border-border/40 bg-muted/10 px-4 py-3.5 sm:px-5">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/40 bg-background/40">
-                            <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/50">
-                              Awaiting creator settlement
-                            </p>
-                            <p className="text-sm font-semibold leading-tight text-foreground sm:text-base">
-                              Trading closed{" "}
-                              {formatDistanceToNow(market.endDate, {
-                                addSuffix: true,
-                              })}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            Read-only
+                    <div className="flex flex-col gap-2 rounded-lg border border-border/60 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <div className="flex items-center gap-2.5">
+                        <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <span className="text-sm text-muted-foreground">
+                            Awaiting creator settlement
                           </span>
-                          <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/80">
-                            Order book locked
-                          </span>
-                          <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            Payouts locked
+                          <span className="text-xs text-muted-foreground/50">
+                            Closed{" "}
+                            {formatDistanceToNow(market.endDate, {
+                              addSuffix: true,
+                            })}
                           </span>
                         </div>
                       </div>
+                      <span className="w-fit shrink-0 rounded-md border border-border/50 px-2 py-0.5 text-[11px] font-medium text-muted-foreground/60">
+                        Read-only
+                      </span>
                     </div>
                   )}
 

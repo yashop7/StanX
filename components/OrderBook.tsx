@@ -423,6 +423,17 @@ export const OrderBook = ({
               </div>
             </>
           )}
+
+          {/* Both-sides notice */}
+          {asks.some((a) => a.isUser) && bids.some((b) => b.isUser) && (
+            <div className="mx-3 my-2 flex items-center gap-2 border-l-2 border-amber-400/50 pl-2.5 sm:mx-4">
+              <span className="text-[10px] text-amber-400">⚠</span>
+              <span className="text-[10px] text-muted-foreground/60">
+                Your orders on both sides{" "}
+                <span className="text-amber-400/80 font-medium">won&apos;t match each other</span>
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>

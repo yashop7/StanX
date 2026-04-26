@@ -610,34 +610,25 @@ export const TradingPanelNew = ({
         {!isSettled && (
           <>
             {isAwaitingSettlement && (
-              <div className="rounded-lg border border-border/40 bg-muted/15 px-3 py-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/40 bg-background/40 text-muted-foreground">
-                      <Lock className="h-3.5 w-3.5" />
+              <div className="rounded-lg border border-border/60 border-l-2 border-l-amber-500/60 px-3.5 py-3">
+                <div className="flex items-start gap-2.5">
+                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500/70" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground/85">
+                      {awaitingSettlementTitle}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground/60">
+                      {awaitingSettlementCaption}
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-md border border-border/50 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/60">
+                        Read-only
+                      </span>
+                      <span className="text-muted-foreground/30 text-xs">·</span>
+                      <span className="rounded-md border border-border/50 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground/60">
+                        Merge available
+                      </span>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/50">
-                        Settlement
-                      </p>
-                      <p className="text-sm font-semibold leading-tight text-foreground">
-                        {awaitingSettlementTitle}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {awaitingSettlementCaption}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Read-only
-                    </span>
-                    <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/80">
-                      Merge available
-                    </span>
-                    <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Payouts locked
-                    </span>
                   </div>
                 </div>
               </div>

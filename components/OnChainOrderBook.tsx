@@ -283,6 +283,17 @@ export const OnChainOrderBook = ({
         })}
       </div>
 
+      {/* Both-sides notice */}
+      {asks.some((a) => a.isUser) && bids.some((b) => b.isUser) && (
+        <div className="mx-4 my-2 flex items-center gap-2 border-l-2 border-amber-400/50 pl-2.5">
+          <span className="text-[10px] text-amber-400">⚠</span>
+          <span className="text-[10px] text-muted-foreground/60">
+            Your orders on both sides{' '}
+            <span className="text-amber-400/80 font-medium">won&apos;t match each other</span>
+          </span>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="px-4 py-2 border-t border-border/10 flex items-center justify-between bg-muted/5">
         <span className="text-[10px] text-muted-foreground/50 tabular-nums">
