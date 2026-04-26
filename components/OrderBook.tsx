@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import { Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useOrderbookWs } from "@/hooks/use-orderbook-ws";
 import { toDisplayPrice, toDisplayQty } from "@/lib/api/backend";
@@ -23,7 +22,6 @@ interface OrderBookProps {
   userPubkey?: string;
   /** True when settlement deadline has passed and the book is read-only */
   isTradingClosed?: boolean;
-  marketEndDate?: Date;
   isMarketCreator?: boolean;
 }
 
@@ -133,23 +131,13 @@ export const OrderBook = ({
   selectedTokenType = "yes",
   userPubkey,
   isTradingClosed = false,
-  marketEndDate,
   isMarketCreator = false,
 }: OrderBookProps) => {
   const numericId = parseInt(marketId, 10);
   const validId = isNaN(numericId) ? null : numericId;
-  const tradingClosedLabel = marketEndDate
-    ? marketEndDate.toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : null;
   const closedMessage = isMarketCreator
-    ? "You're the market creator. Settle this market to unlock claims and finish the trading cycle."
-    : "This market is waiting on the creator to settle it before claims and payouts can open.";
+    ? "Settle the market to unlock claims."
+    : "Waiting for creator settlement.";
 
   const { orderbook, status } = useOrderbookWs(validId);
 
@@ -216,6 +204,11 @@ export const OrderBook = ({
           >
             {selectedTokenType.toUpperCase()}
           </span>
+          {isTradingClosed && (
+            <span className="rounded-full border border-border/40 bg-muted/20 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Locked
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <StatusDot
@@ -232,17 +225,13 @@ export const OrderBook = ({
       </div>
 
       {isTradingClosed && (
-        <div className="mx-3 mt-3 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/8 px-3 py-2.5 text-xs text-amber-100/85 sm:mx-4">
-          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
-          <div className="space-y-1">
-            <p className="font-semibold text-amber-300">Order book locked</p>
-            <p>
-              {tradingClosedLabel
-                ? `Trading closed on ${tradingClosedLabel}.`
-                : "Trading is closed."}{" "}
-              {closedMessage} No new orders, matches, or cancellations can
-              happen until then.
-            </p>
+        <div className="px-3 pt-2 sm:px-4">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+            <span className="font-medium text-foreground/85">
+              Settlement pending
+            </span>
+            <span>{closedMessage}</span>
           </div>
         </div>
       )}
@@ -266,7 +255,6 @@ export const OrderBook = ({
         </div>
       )}
 
-      {/* ════════════════════ ORDER BOOK ════════════════════ */}
       {orderbook && (
         <div className="mt-3">
           {/* ── Fully empty state ── */}
@@ -284,11 +272,11 @@ export const OrderBook = ({
                 ))}
               </div>
               <p className="text-[11px] font-semibold text-muted-foreground/50 tracking-wide">
-                {isTradingClosed ? "Order book closed" : "Order book is empty"}
+                {isTradingClosed ? "Order book locked" : "Order book is empty"}
               </p>
               <p className="text-[10px] text-muted-foreground/30">
                 {isTradingClosed
-                  ? "No bids or asks were left on the book when trading locked for settlement"
+                  ? closedMessage
                   : "No open bids or asks right now"}
               </p>
             </div>

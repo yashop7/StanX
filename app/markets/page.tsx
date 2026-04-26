@@ -19,6 +19,7 @@ import { Search, Grid3x3, LayoutList, Filter, RefreshCw, AlertCircle } from 'luc
 import { cn } from '@/lib/utils';
 import { getMarketsAction } from './actions';
 import type { DisplayMarket } from '@/lib/blockchain/markets';
+import { HotMarkets } from '@/components/HotMarkets';
 
 const Markets = () => {
   const [markets, setMarkets] = useState<DisplayMarket[]>([]);
@@ -101,6 +102,9 @@ const Markets = () => {
             </div>
           )}
 
+          {/* Hot Markets — fetches and ranks internally via server action */}
+          <HotMarkets />
+
           {/* Search and Controls */}
           <div className="flex flex-col sm:flex-row gap-3 flex-wrap mb-8">
             <div className="relative flex-1 sm:min-w-60">
@@ -122,22 +126,9 @@ const Markets = () => {
                   <SelectItem value="all">All Markets</SelectItem>
                   <SelectItem value="live">Live</SelectItem>
                   <SelectItem value="ending-soon">Ending Soon</SelectItem>
-                  <SelectItem value="settled">Settled</SelectItem>
                 </SelectContent>
               </Select>
 
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="flex-1 sm:w-44 h-11 bg-muted/30 border-border/30">
-                  <Filter className="h-4 w-4 mr-2 text-muted-foreground" />
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="volume">Highest Volume</SelectItem>
-                  <SelectItem value="newest">Newest First</SelectItem>
-                  <SelectItem value="ending-soon">Ending Soon</SelectItem>
-                  <SelectItem value="id">Market ID</SelectItem>
-                </SelectContent>
-              </Select>
 
               <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg shrink-0">
                 <Button

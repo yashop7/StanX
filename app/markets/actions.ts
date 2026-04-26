@@ -31,6 +31,46 @@ const getCachedMarketById = unstable_cache(
   { revalidate: 15 },
 );
 
+export interface HotMarketEntry {
+  market: DisplayMarket;
+  volume: number;
+  participants: number;
+}
+
+// Piggybacks on the already-cached market list — zero extra backend calls.
+// TTL is 10 min; the underlying getCachedAllMarkets (30s) refreshes more often anyway.
+const getCachedHotMarkets = unstable_cache(
+  async (): Promise<HotMarketEntry[]> => {
+    const all = await fetchAllDisplayMarketsFromBackend();
+    return all
+      .filter((m) => !m.isSettled && m.status !== 'resolved' && m.endDate > new Date())
+      .sort((a, b) => b.volume - a.volume)
+      .slice(0, 3)
+      .map((market) => ({ market, volume: market.volume, participants: market.participants }));
+  },
+  ['hot-markets'],
+  { revalidate: 600 },
+);
+
+export async function getHotMarketsAction(): Promise<{
+  success: boolean;
+  entries?: HotMarketEntry[];
+  error?: string;
+}> {
+  try {
+    const raw = await getCachedHotMarkets();
+    // Revive Date objects lost through JSON serialization in unstable_cache
+    const entries = raw.map((e) => ({
+      ...e,
+      market: { ...e.market, endDate: new Date(e.market.endDate) },
+    }));
+    return { success: true, entries };
+  } catch (err) {
+    console.error('getHotMarketsAction failed:', err);
+    return { success: false, error: 'Failed to compute hot markets' };
+  }
+}
+
 export async function getMarketsAction(): Promise<{
   success: boolean;
   markets?: DisplayMarket[];
@@ -41,7 +81,6 @@ export async function getMarketsAction(): Promise<{
     return { success: true, markets: markets.map(reviveMarket) };
   } catch (error) {
     console.error("getMarketsAction (backend) failed, falling back to chain:", error);
-    // Fallback to direct chain read if backend is down
     try {
       const markets = await fetchAllDisplayMarkets();
       return { success: true, markets };

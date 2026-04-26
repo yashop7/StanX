@@ -52,15 +52,6 @@ export function UserMarketOrders({
   const { indexerOk } = useIndexerHealth();
   const isCancellationClosed =
     !isSettled && !!marketEndDate && new Date() >= marketEndDate;
-  const closedAtLabel = marketEndDate
-    ? marketEndDate.toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : null;
   const cancellationClosedDescription = isMarketCreator
     ? "Trading is over and your open orders stay frozen until you settle this market."
     : "Your open orders stay frozen because the market creator has not settled this market yet.";
@@ -183,7 +174,16 @@ export function UserMarketOrders({
   return (
     <div className="min-w-0 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-semibold text-muted-foreground">My Orders</p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-semibold text-muted-foreground">
+            My Orders
+          </p>
+          {isCancellationClosed && (
+            <span className="rounded-full border border-border/40 bg-muted/20 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Locked
+            </span>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="sm"
@@ -197,18 +197,12 @@ export function UserMarketOrders({
       </div>
 
       {isCancellationClosed && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/8 p-3 text-xs text-amber-100/85">
-          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
-          <div className="space-y-1">
-            <p className="font-semibold text-amber-300">Open orders locked</p>
-            <p>
-              {closedAtLabel
-                ? `Trading closed on ${closedAtLabel}.`
-                : "Trading is closed."}{" "}
-              {cancellationClosedDescription} They can no longer be cancelled
-              while the market waits for settlement.
-            </p>
-          </div>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+          <span className="font-medium text-foreground/85">
+            Cancellations locked
+          </span>
+          <span>Until settlement is posted.</span>
         </div>
       )}
 

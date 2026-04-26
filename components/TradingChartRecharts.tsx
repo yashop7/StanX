@@ -383,12 +383,12 @@ export const TradingChartRecharts = ({
         </span>
 
         {/* Period selector — pill tabs */}
-        <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border/15 bg-muted/20 p-0.5">
+        <div className="grid w-full grid-cols-7 items-center gap-1 rounded-lg border border-border/15 bg-muted/20 p-0.5 sm:flex sm:w-auto">
           {PERIODS.map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className={`min-w-[44px] px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+              className={`min-w-0 px-1.5 py-1 text-center rounded-md text-[11px] font-semibold transition-all cursor-pointer sm:min-w-[44px] sm:px-2.5 ${
                 period === p
                   ? "bg-background text-foreground shadow-sm border border-border/20"
                   : "text-muted-foreground/45 hover:text-muted-foreground/80 hover:bg-muted/30"

@@ -231,7 +231,11 @@ export interface IndexerHealth {
 
 /** GET /health, checks if the indexer is alive and writing heartbeats */
 export async function fetchIndexerHealth(): Promise<IndexerHealth> {
-  const res = await fetch(`${BASE_URL}/health`, { cache: 'no-store' });
+  const url =
+    typeof window !== 'undefined'
+      ? '/api/health'  // client: dedicated route that reads NEXT_PUBLIC_BACKEND_URL at request time
+      : `${(process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3003').replace(/\/$/, '')}/health`;
+  const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) {
     return { indexer_ok: false, last_heartbeat: 0, seconds_since_heartbeat: 0 };
   }

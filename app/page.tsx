@@ -861,7 +861,6 @@ function Kicker({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* --- Bento visuals ----------------------------------------------------- */
 
 /* Clipped Area Chart — evilcharts.com style
    Active zone (left of cursor) is fully opaque + filled.
@@ -1898,7 +1897,7 @@ function LiveDemo({
                     <span className="text-white/15">·</span>
                     <span>Market #{active.marketId}</span>
                   </div>
-                  <h3 className="mt-3 text-2xl font-semibold leading-tight tracking-tight text-white md:text-3xl">
+                  <h3 className="mt-3 break-words text-2xl font-semibold leading-tight tracking-tight text-white md:text-3xl">
                     {active.question}
                   </h3>
 
@@ -1909,55 +1908,59 @@ function LiveDemo({
                     />
                   </div>
 
-                  <div className="mt-6 flex items-center gap-3 border-t border-white/6 pt-5">
-                    {/* YES chip */}
-                    <div
-                      className="flex items-baseline gap-1 rounded-lg border px-3 py-2"
-                      style={{
-                        borderColor: `${ACCENT}33`,
-                        background: `${ACCENT}0d`,
-                      }}
-                    >
-                      <span
-                        className="text-[10px] font-semibold uppercase tracking-[0.14em]"
-                        style={{ color: ACCENT }}
+                  <div className="mt-6 border-t border-white/6 pt-5">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                      <div className="flex flex-wrap items-center gap-3 sm:min-w-0 sm:flex-1">
+                        {/* YES chip */}
+                        <div
+                          className="flex items-baseline gap-1 rounded-lg border px-3 py-2"
+                          style={{
+                            borderColor: `${ACCENT}33`,
+                            background: `${ACCENT}0d`,
+                          }}
+                        >
+                          <span
+                            className="text-[10px] font-semibold uppercase tracking-[0.14em]"
+                            style={{ color: ACCENT }}
+                          >
+                            Yes
+                          </span>
+                          <span
+                            className="font-mono text-[15px] font-semibold tabular-nums leading-none"
+                            style={{ color: ACCENT }}
+                          >
+                            {Math.round(active.yesPrice * 100)}¢
+                          </span>
+                        </div>
+                        {/* NO chip */}
+                        <div className="flex items-baseline gap-1 rounded-lg border border-white/8 bg-white/3 px-3 py-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                            No
+                          </span>
+                          <span className="font-mono text-[15px] font-semibold tabular-nums leading-none text-white/65">
+                            {100 - Math.round(active.yesPrice * 100)}¢
+                          </span>
+                        </div>
+                        {/* divider */}
+                        <div className="hidden h-6 w-px shrink-0 bg-white/8 sm:block" />
+                        {/* stats */}
+                        <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-4">
+                          <Stat label="Vol" value={formatVolume(active.volume)} />
+                          <Stat
+                            label="Traders"
+                            value={active.participants.toLocaleString()}
+                          />
+                        </div>
+                      </div>
+                      {/* trade cta */}
+                      <Link
+                        href={`/market/${active.marketId}`}
+                        className="group inline-flex h-10 w-full shrink-0 items-center justify-center gap-1.5 rounded-full bg-white px-4 text-[13px] font-medium text-black transition-colors hover:bg-white/90 sm:h-9 sm:w-auto"
                       >
-                        Yes
-                      </span>
-                      <span
-                        className="font-mono text-[15px] font-semibold tabular-nums leading-none"
-                        style={{ color: ACCENT }}
-                      >
-                        {Math.round(active.yesPrice * 100)}¢
-                      </span>
+                        Trade
+                        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                      </Link>
                     </div>
-                    {/* NO chip */}
-                    <div className="flex items-baseline gap-1 rounded-lg border border-white/8 bg-white/3 px-3 py-2">
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
-                        No
-                      </span>
-                      <span className="font-mono text-[15px] font-semibold tabular-nums leading-none text-white/65">
-                        {100 - Math.round(active.yesPrice * 100)}¢
-                      </span>
-                    </div>
-                    {/* divider */}
-                    <div className="h-6 w-px shrink-0 bg-white/8" />
-                    {/* stats */}
-                    <div className="flex flex-1 items-center gap-4">
-                      <Stat label="Vol" value={formatVolume(active.volume)} />
-                      <Stat
-                        label="Traders"
-                        value={active.participants.toLocaleString()}
-                      />
-                    </div>
-                    {/* trade cta */}
-                    <Link
-                      href={`/market/${active.marketId}`}
-                      className="group inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-white px-4 text-[13px] font-medium text-black transition-colors hover:bg-white/90"
-                    >
-                      Trade
-                      <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-                    </Link>
                   </div>
                 </motion.div>
               ) : (

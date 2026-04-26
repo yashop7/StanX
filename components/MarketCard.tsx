@@ -101,11 +101,11 @@ export const MarketCard = ({ market, featured = false, compact = false }: Market
           {/* YES/NO */}
           <div className="flex items-center gap-2 mb-4">
             <button className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-md border border-success/20 bg-success/5 hover:bg-success/10 transition-colors group/yes">
-              <span className="text-[11px] font-semibold text-success uppercase tracking-wide">Yes</span>
+              <span className="text-sm font-semibold text-success uppercase tracking-wide">Yes</span>
               <span className="text-sm font-bold text-success tabular-nums">{yesPercent}¢</span>
             </button>
             <button className="flex-1 flex items-center justify-center gap-1 py-1.5 px-2.5 rounded-md border border-danger/20 bg-danger/5 hover:bg-danger/10 transition-colors group/no">
-              <span className="text-[11px] font-semibold text-danger uppercase tracking-wide">No</span>
+              <span className="text-sm font-semibold text-danger uppercase tracking-wide">No</span>
               <span className="text-sm font-bold text-danger tabular-nums">{noPercent}¢</span>
             </button>
           </div>

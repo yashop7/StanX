@@ -435,9 +435,6 @@ export default function CreateMarket() {
         ) : (
           <div className="space-y-6">
 
-            {/* ════════════════════════════════════════════════════════════
-                STEP 1 — YouTube URL Input
-               ════════════════════════════════════════════════════════════ */}
             <div className="p-6 rounded-2xl bg-card border border-border/50 space-y-4">
               <div className="flex items-center gap-2">
                 <Youtube className="h-4 w-4 text-red-500" />
@@ -582,10 +579,6 @@ export default function CreateMarket() {
                 </div>
               )}
             </div>
-
-            {/* ════════════════════════════════════════════════════════════
-                STEP 2 — Market Configuration (only after video loaded)
-               ════════════════════════════════════════════════════════════ */}
             {video && (
               <div className="p-6 rounded-2xl bg-card border border-border/50 space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="flex items-center gap-2">
@@ -752,10 +745,6 @@ export default function CreateMarket() {
                 </div>
               </div>
             )}
-
-            {/* ════════════════════════════════════════════════════════════
-                STEP 3 — Review & Submit
-               ════════════════════════════════════════════════════════════ */}
             {video && targetValid && endDate && !isDone && (
               <div className="p-6 rounded-2xl bg-linear-to-br from-primary/5 to-primary/10 border border-primary/20 space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="flex items-center gap-2">

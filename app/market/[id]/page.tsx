@@ -698,31 +698,36 @@ const MarketDetail = () => {
                 {!market.isSettled &&
                   isAwaitingSettlement &&
                   !isMarketCreator && (
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/8 p-4 sm:p-5">
-                      <div className="flex min-w-0 items-start gap-3.5">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
-                          <Lock className="h-4 w-4 text-amber-400" />
+                    <div className="rounded-xl border border-border/40 bg-muted/10 px-4 py-3.5 sm:px-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/40 bg-background/40">
+                            <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/50">
+                              Awaiting creator settlement
+                            </p>
+                            <p className="text-sm font-semibold leading-tight text-foreground sm:text-base">
+                              Trading closed{" "}
+                              {formatDistanceToNow(market.endDate, {
+                                addSuffix: true,
+                              })}
+                            </p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="mb-0.5 text-[10px] font-medium uppercase tracking-widest text-amber-200/55">
-                            Awaiting creator settlement
-                          </p>
-                          <p className="break-words text-sm font-semibold text-amber-50 sm:text-base">
-                            Trading closed{" "}
-                            {formatDistanceToNow(market.endDate, {
-                              addSuffix: true,
-                            })}
-                          </p>
-                          <p className="mt-1 text-xs text-amber-100/80">
-                            The market creator still needs to settle this
-                            market. Until then, the order book, open orders,
-                            and payouts stay locked.
-                          </p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Read-only
+                          </span>
+                          <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/80">
+                            Order book locked
+                          </span>
+                          <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Payouts locked
+                          </span>
                         </div>
                       </div>
-                      <span className="shrink-0 rounded-md border border-amber-500/20 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-200">
-                        Read-only
-                      </span>
                     </div>
                   )}
 
@@ -1095,7 +1100,6 @@ const MarketDetail = () => {
                         selectedTokenType={selectedTokenType}
                         userPubkey={userPubkey}
                         isTradingClosed={isAwaitingSettlement}
-                        marketEndDate={market.endDate}
                         isMarketCreator={isMarketCreator}
                       />
                       {/* <div className="flex items-center gap-3 pt-2">

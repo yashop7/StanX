@@ -73,30 +73,23 @@ export const TradingPanelNew = ({
 }: TradingPanelNewProps) => {
   const isAwaitingSettlement =
     !isSettled && !!marketEndDate && new Date() >= marketEndDate;
-  const settlementDeadlineLabel = marketEndDate
-    ? marketEndDate.toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      })
-    : null;
-  const settlementPendingSummary = isMarketCreator
-    ? "You're the market creator, so the next step is to settle this market."
-    : "This market is waiting on the creator to settle it.";
-  const settlementPendingTradeLock = `${settlementPendingSummary} The order book stays locked until the market is settled.`;
-  const settlementPendingMergeHint = isMarketCreator
-    ? "You can still merge YES and NO token pairs back to USDC while you prepare the final settlement."
-    : "You can still merge YES and NO token pairs back to USDC while the market waits for settlement.";
-  const awaitingSettlementTiles = [
-    { label: "Order book", value: "Locked" },
-    {
-      label: isMarketCreator ? "Your action" : "Next step",
-      value: isMarketCreator ? "Settle market" : "Creator settles",
-    },
-    { label: "Still open", value: "Merge YES + NO" },
-  ] as const;
+  const settlementPendingToast = isMarketCreator
+    ? "Trading is closed. Settle the market to unlock claims."
+    : "Trading is closed until the market creator settles it.";
+  const awaitingSettlementTitle = isMarketCreator
+    ? "Settle market"
+    : "Awaiting creator settlement";
+  const awaitingSettlementCaption = isMarketCreator
+    ? "Trading closed. Settle to unlock payouts."
+    : "Trading closed until the creator settles it.";
+  const settledHeadline =
+    winningOutcome === "YES"
+      ? "YES won"
+      : winningOutcome === "NO"
+        ? "NO won"
+        : winningOutcome === "NEITHER"
+          ? "Settled with no winner"
+          : "Market resolved";
   const [orderType, setOrderType] = useState<OrderType>("market");
   const [action, setAction] = useState<"buy" | "sell">("buy");
   const [tokenType, setTokenType] = useState<"yes" | "no">("yes");
@@ -124,6 +117,12 @@ export const TradingPanelNew = ({
       setTokenType(selectedTokenType);
     }
   }, [selectedTokenType]);
+
+  useEffect(() => {
+    if ((isAwaitingSettlement || isSettled) && orderType !== "merge") {
+      setOrderType("merge");
+    }
+  }, [isAwaitingSettlement, isSettled, orderType]);
 
   const currentPrice = tokenType === "yes" ? yesPrice : noPrice;
   const limitPriceNum = parseFloat(limitPrice) || 0;
@@ -174,7 +173,7 @@ export const TradingPanelNew = ({
     try {
       if (isAwaitingSettlement) {
         toast.error("Order entry is closed.", {
-          description: settlementPendingTradeLock,
+          description: settlementPendingToast,
         });
         return;
       }
@@ -424,7 +423,8 @@ export const TradingPanelNew = ({
     try {
       if (isAwaitingSettlement) {
         toast.error("Splitting is closed.", {
-          description: settlementPendingMergeHint,
+          description:
+            "Trading is closed. Merge stays available while settlement is pending.",
         });
         return;
       }
@@ -539,11 +539,20 @@ export const TradingPanelNew = ({
       <div className="flex flex-col items-start gap-2 border-b border-border px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            {isAwaitingSettlement ? "Awaiting Settlement" : "Place Order"}
+            Place Order
           </h3>
           {isAwaitingSettlement && (
-            <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+            <span
+              className="rounded-full border border-border/40 bg-muted/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+            >
               Read-only
+            </span>
+          )}
+          {isSettled && (
+            <span
+              className="rounded-full border border-border/40 bg-muted/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              Resolved
             </span>
           )}
         </div>
@@ -561,62 +570,39 @@ export const TradingPanelNew = ({
       <div className="space-y-4 p-4">
         {/* ── Market Settled banner ── */}
         {isSettled && (
-          <div className="space-y-4">
-            <div className="flex flex-col items-center gap-3 py-4">
-              <div
-                className={cn(
-                  "h-12 w-12 rounded-full flex items-center justify-center",
-                  winningOutcome === "YES"
-                    ? "bg-success/15"
-                    : winningOutcome === "NO"
-                      ? "bg-danger/15"
-                      : "bg-muted/30"
-                )}
-              >
-                <Trophy
+          <div className="rounded-lg border border-border/40 bg-muted/15 px-3 py-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <div
                   className={cn(
-                    "h-6 w-6",
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border",
                     winningOutcome === "YES"
-                      ? "text-success"
+                      ? "border-success/20 bg-success/10 text-success"
                       : winningOutcome === "NO"
-                        ? "text-danger"
-                        : "text-muted-foreground"
+                        ? "border-danger/20 bg-danger/10 text-danger"
+                        : "border-border/40 bg-background/40 text-muted-foreground"
                   )}
-                />
+                >
+                  <Trophy className="h-3.5 w-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/50">
+                    Resolution
+                  </p>
+                  <p className="text-sm font-semibold leading-tight text-foreground">
+                    {settledHeadline}
+                  </p>
+                </div>
               </div>
-              <div className="text-center space-y-1">
-                <p className="text-sm font-semibold">Market Resolved</p>
-                <p className="text-xs text-muted-foreground">
-                  {winningOutcome === "YES"
-                    ? "YES wins — YES token holders can claim $1 per token"
-                    : winningOutcome === "NO"
-                      ? "NO wins — NO token holders can claim $1 per token"
-                      : winningOutcome === "NEITHER"
-                        ? "Neither outcome won — collateral returned proportionally"
-                        : "This market has been settled"}
-                </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/80">
+                  Claims open
+                </span>
+                <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Merge available
+                </span>
               </div>
             </div>
-            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-muted/20 border border-border/30 text-xs text-muted-foreground">
-              <Lock className="h-3.5 w-3.5 shrink-0" />
-              <span>
-                New orders and splitting are disabled. You can still merge token
-                pairs back into USDC.
-              </span>
-            </div>
-            {/* Show merge tab when settled */}
-            <button
-              onClick={() => setOrderType("merge")}
-              className={cn(
-                "w-full py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition-all",
-                orderType === "merge"
-                  ? "bg-muted/30 border border-border text-foreground"
-                  : "border border-border/50 text-muted-foreground hover:text-foreground hover:border-border"
-              )}
-            >
-              <Layers className="h-3.5 w-3.5" />
-              Merge Tokens → USDC
-            </button>
           </div>
         )}
 
@@ -624,51 +610,35 @@ export const TradingPanelNew = ({
         {!isSettled && (
           <>
             {isAwaitingSettlement && (
-              <div className="space-y-3 rounded-xl border border-amber-500/20 bg-amber-500/8 px-3 py-3 text-xs text-amber-100/85">
-                <div className="flex items-start gap-2">
-                  <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
-                  <div className="space-y-1">
-                    <p className="font-semibold text-amber-300">
-                      {isMarketCreator
-                        ? "Settlement required"
-                        : "Awaiting creator settlement"}
-                    </p>
-                    <p>
-                      {settlementDeadlineLabel
-                        ? `Trading closed on ${settlementDeadlineLabel}.`
-                        : "Trading is closed."}{" "}
-                      {settlementPendingTradeLock}
-                    </p>
-                  </div>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {awaitingSettlementTiles.map((tile) => (
-                    <div
-                      key={tile.label}
-                      className="rounded-lg border border-amber-500/15 bg-background/40 px-3 py-2.5"
-                    >
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-200/55">
-                        {tile.label}
+              <div className="rounded-lg border border-border/40 bg-muted/15 px-3 py-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border/40 bg-background/40 text-muted-foreground">
+                      <Lock className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/50">
+                        Settlement
                       </p>
-                      <p className="mt-1 text-[11px] font-semibold text-amber-50">
-                        {tile.value}
+                      <p className="text-sm font-semibold leading-tight text-foreground">
+                        {awaitingSettlementTitle}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        {awaitingSettlementCaption}
                       </p>
                     </div>
-                  ))}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {orderType !== "merge" && (
-                    <button
-                      onClick={() => setOrderType("merge")}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold text-amber-100 transition-colors hover:bg-amber-500/15"
-                    >
-                      <Layers className="h-3.5 w-3.5" />
-                      Open Merge
-                    </button>
-                  )}
-                  <span className="text-[11px] text-amber-100/70">
-                    Claims open once the market is settled.
-                  </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Read-only
+                    </span>
+                    <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-foreground/80">
+                      Merge available
+                    </span>
+                    <span className="rounded-full border border-border/40 bg-background/50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Payouts locked
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
@@ -714,16 +684,6 @@ export const TradingPanelNew = ({
             {/* Market & Limit Order Content */}
             {(orderType === "market" || orderType === "limit") && (
               <>
-                {isAwaitingSettlement && (
-                  <div className="rounded-lg border border-border/30 bg-muted/20 px-3 py-2.5 text-[11px] text-muted-foreground">
-                    Order entry is closed while this market awaits settlement.
-                    You can still review the final price snapshot below or
-                    switch to{" "}
-                    <span className="font-semibold text-foreground">Merge</span>{" "}
-                    to turn paired YES and NO tokens back into USDC.
-                  </div>
-                )}
-
                 <fieldset
                   disabled={isAwaitingSettlement}
                   className={cn(
@@ -1202,9 +1162,8 @@ export const TradingPanelNew = ({
                       Awaiting settlement
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Splitting is disabled. {settlementPendingSummary} You can
-                      still merge YES+NO pairs back to USDC while you wait for
-                      payouts to unlock.
+                      Splitting is disabled. Merge stays open while settlement
+                      is pending.
                     </p>
                   </div>
                 </div>
