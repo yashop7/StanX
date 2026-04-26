@@ -469,7 +469,7 @@ const MarketDetail = () => {
               <div className="space-y-4">
                 {/* Market Header */}
                 <div className="panel-card p-4 sm:p-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+                  <div className="flex flex-row gap-3 sm:gap-4">
                     <div className="shrink-0">
                       <div className="h-12 w-12 overflow-hidden rounded-xl bg-muted ring-1 ring-border/50 sm:h-14 sm:w-14">
                         <img
@@ -584,7 +584,7 @@ const MarketDetail = () => {
                         }
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center gap-1.5 text-muted-foreground/50 transition-colors hover:text-red-400 sm:ml-auto"
+                        className="flex items-center gap-1.5 text-muted-foreground/50 transition-colors hover:text-red-400 ml-auto"
                       >
                         <Youtube className="h-3.5 w-3.5" />
                         <span className="text-[11px] font-medium">
@@ -595,7 +595,7 @@ const MarketDetail = () => {
                     )}
                   </div>
 
-                  <div className="mt-3 flex flex-col gap-3 border-t border-border/10 pt-3 dark:border-border/[0.06] sm:flex-row sm:items-center sm:justify-between">
+                  <div className="mt-3 flex flex-row items-center justify-between gap-3 border-t border-border/10 pt-3 dark:border-border/[0.06]">
                     <div className="flex flex-col gap-0.5">
                       <span className="text-[10px] font-semibold uppercase tracking-widest leading-none text-muted-foreground/40">
                         {market.isSettled

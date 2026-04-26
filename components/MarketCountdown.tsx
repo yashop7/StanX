@@ -182,7 +182,7 @@ export function MarketCountdownBlocks({
   ];
 
   return (
-    <div className="flex flex-wrap items-end justify-start gap-1.5 sm:flex-nowrap sm:justify-end">
+    <div className="flex flex-wrap items-end justify-center gap-1.5 sm:flex-nowrap sm:justify-end">
       {segments.map(({ value, label }, i) => (
         <div key={label} className="flex flex-col items-center gap-[3px]">
           {/* Separator dot between segments (not after last) */}
