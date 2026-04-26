@@ -57,6 +57,7 @@ import { formatNumber } from "@/app/create-market/metadata";
 import { cn } from "@/lib/utils";
 import { UserMarketOrders } from "@/components/UserMarketOrders";
 import { classifyTxError, isUserRejection } from "@/lib/blockchain/verify-tx";
+import { OnChainOrderBook } from "@/components/OnChainOrderBook";
 
 const MarketDetail = () => {
   const params = useParams();

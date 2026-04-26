@@ -115,6 +115,12 @@ export function useOrderbookWs(marketId: number | null) {
       try {
         const msg = JSON.parse(event.data) as Record<string, unknown>;
 
+        // Guard against stale messages from a previous market's socket or server broadcast bugs
+        if (typeof msg.market_id === 'number' && msg.market_id !== id) {
+          console.warn(`[OrderbookWS] Ignoring message for market ${msg.market_id} (connected to ${id})`);
+          return;
+        }
+
         if ('yes_bids' in msg) {
           // Full snapshot — replace entire orderbook
           setOrderbook(msg as unknown as LiveOrderbook);
@@ -180,6 +186,7 @@ export function useOrderbookWs(marketId: number | null) {
       cancelled = true;
       clearReconnect();
       if (wsRef.current) {
+        wsRef.current.onmessage = null; // prevent stale messages from leaking into the next market
         wsRef.current.onclose = null;
         wsRef.current.onerror = null;
         wsRef.current.close();
