@@ -652,7 +652,7 @@ export const TradingPanelNew = ({
             )}
 
             {/* Tab bar — underline style */}
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-5 sm:border-b sm:border-border">
+            <div className="flex gap-1 sm:flex-wrap sm:items-center sm:gap-5 sm:border-b sm:border-border">
               {orderTypes.map((type) => {
                 const isDisabled =
                   isAwaitingSettlement && type.value !== "merge";
@@ -667,14 +667,14 @@ export const TradingPanelNew = ({
                         : undefined
                     }
                     className={cn(
-                      "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-lg border px-3 py-2.5 text-[11px] font-medium transition-all duration-150 sm:rounded-none sm:border-x-0 sm:border-t-0 sm:px-0 sm:text-xs",
+                      "flex-1 inline-flex min-w-0 items-center justify-center gap-1 rounded-lg border px-1.5 py-2 text-[10px] font-medium transition-all duration-150 sm:flex-none sm:rounded-none sm:border-x-0 sm:border-t-0 sm:gap-1.5 sm:px-0 sm:py-2.5 sm:text-xs",
                       "disabled:cursor-not-allowed disabled:opacity-45",
                       orderType === type.value
                         ? "border-border bg-muted/30 text-foreground sm:border-foreground sm:bg-transparent"
                         : "border-border/40 text-muted-foreground hover:border-border hover:text-foreground sm:border-transparent"
                     )}
                   >
-                    <span>{type.icon}</span>
+                    <span className="hidden sm:block">{type.icon}</span>
                     <span>{type.label}</span>
                   </button>
                 );
