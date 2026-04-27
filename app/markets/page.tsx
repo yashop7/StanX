@@ -17,7 +17,6 @@ import {
 } from '@/components/ui/select';
 import { Search, Grid3x3, LayoutList, Filter, RefreshCw, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getMarketsAction } from './actions';
 import type { DisplayMarket } from '@/lib/blockchain/markets';
 import { HotMarkets } from '@/components/HotMarkets';
 
@@ -30,14 +29,23 @@ const Markets = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  const loadMarkets = useCallback(async () => {
+  const loadMarkets = useCallback(async (forceRefresh = false) => {
     setIsLoading(true);
     setError(null);
-    const result = await getMarketsAction();
-    if (result.success && result.markets) {
-      setMarkets(result.markets);
-    } else {
-      setError(result.error ?? 'Failed to load markets');
+    try {
+      const res = await fetch('/api/markets', {
+        cache: forceRefresh ? 'no-cache' : 'default',
+      });
+      if (!res.ok) throw new Error('Failed to fetch markets');
+      const data = await res.json();
+      setMarkets(
+        (data.markets as (Omit<DisplayMarket, 'endDate'> & { endDate: string })[]).map((m) => ({
+          ...m,
+          endDate: new Date(m.endDate),
+        })),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load markets');
     }
     setIsLoading(false);
   }, []);
@@ -85,7 +93,7 @@ const Markets = () => {
             <Button
               variant="ghost"
               size="sm"
-              onClick={loadMarkets}
+              onClick={() => loadMarkets(true)}
               disabled={isLoading}
               className="gap-2 text-muted-foreground"
             >
