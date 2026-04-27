@@ -329,7 +329,7 @@ export const OrderBook = ({
                             ¢
                           </span>
                           {ask.isUser && (
-                            <span className="text-[9px] px-1 py-px rounded bg-amber-400/20 text-amber-400 font-bold tracking-wide leading-none">
+                            <span className="text-[9px] px-1 py-px rounded-xs bg-amber-400/20 text-amber-400 font-bold tracking-wide leading-none">
                               YOU
                             </span>
                           )}
@@ -406,7 +406,7 @@ export const OrderBook = ({
                           ¢
                         </span>
                         {bid.isUser && (
-                          <span className="text-[9px] px-1 py-px rounded bg-amber-400/20 text-amber-400 font-bold tracking-wide leading-none">
+                          <span className="text-[9px] px-1 py-px rounded-xs bg-amber-400/20 text-amber-400 font-bold tracking-wide leading-none">
                             YOU
                           </span>
                         )}
@@ -426,7 +426,7 @@ export const OrderBook = ({
 
           {/* Both-sides notice */}
           {asks.some((a) => a.isUser) && bids.some((b) => b.isUser) && (
-            <div className="mx-3 my-2 flex items-center gap-2 border-l-2 border-amber-400/50 pl-2.5 sm:mx-4">
+            <div className="my-2 mr-3 flex items-center gap-2 border-l-2 border-amber-400/50 pl-2.5 sm:mr-4">
               <span className="text-[10px] text-amber-400">⚠</span>
               <span className="text-[10px] text-muted-foreground/60">
                 Your orders on both sides{" "}
