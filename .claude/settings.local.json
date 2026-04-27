@@ -38,7 +38,9 @@
       "Bash(node -e \"const c = 7618003; console.log\\('hex:', c.toString\\(16\\)\\); console.log\\('decoded base64:', Buffer.from\\('X19jb2RlPTc2MTgwMDM=', 'base64'\\).toString\\(\\)\\)\")",
       "Bash(node -e ' *)",
       "Bash(xargs kill *)",
-      "Bash(gh api *)"
+      "Bash(gh api *)",
+      "Bash(node -e \"console.log\\(require.resolve\\('@solana/kit', { paths: ['/Users/yash/Documents/CODING/Documents/Web3/prediction-market'] }\\)\\)\")",
+      "Bash(bun install *)"
     ],
     "additionalDirectories": [
       "/Users/yash/Documents/CODING/Documents-Web3/prediction-market/app"

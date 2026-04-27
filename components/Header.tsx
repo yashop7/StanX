@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { 
+import {
   Menu,
   User,
   Wallet,
@@ -10,6 +10,8 @@ import {
   ChevronDown,
   History,
   Plus,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { LogoMark } from '@/components/LogoMark';
 import { WalletButton } from '@/components/WalletButton';
@@ -30,6 +32,7 @@ import { Droplets } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useIndexerHealth } from '@/hooks/use-indexer-health';
+import { useState } from 'react';
 
 export const Header = () => {
   const wallet = useWalletSession();
@@ -39,8 +42,18 @@ export const Header = () => {
   const pathname = usePathname();
   const { health, indexerOk } = useIndexerHealth();
 
+  const [copied, setCopied] = useState(false);
+
   const shortenAddress = (address: string) =>
     `${address.slice(0, 4)}...${address.slice(-4)}`;
+
+  const copyAddress = () => {
+    if (!wallet) return;
+    navigator.clipboard.writeText(wallet.account.address).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const navLinks: { href: string; label: string }[] = [];
 
@@ -155,9 +168,24 @@ export const Header = () => {
                 <DropdownMenuContent align="end" className="w-52 border-border bg-card">
                   <DropdownMenuLabel className="font-normal py-2">
                     <p className="text-xs font-medium text-foreground">Wallet</p>
-                    <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
-                      {wallet ? shortenAddress(wallet.account.address) : 'Not connected'}
-                    </p>
+                    <div className="flex items-center justify-between gap-2 mt-0.5">
+                      <p className="text-[11px] text-muted-foreground font-mono">
+                        {wallet ? shortenAddress(wallet.account.address) : 'Not connected'}
+                      </p>
+                      {wallet && (
+                        <button
+                          onClick={copyAddress}
+                          className="text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                          title="Copy address"
+                        >
+                          {copied ? (
+                            <Check className="h-3 w-3 text-emerald-400" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </button>
+                      )}
+                    </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
