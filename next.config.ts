@@ -3,6 +3,12 @@ import type { NextConfig } from "next";
 const BACKEND_ORIGIN = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:3003';
 
 const nextConfig: NextConfig = {
+  transpilePackages: [
+    "@solana/kit",
+    "@solana/react-hooks",
+    "@solana/client",
+    "@solana/program-client-core",
+  ],
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'i.ytimg.com' },
