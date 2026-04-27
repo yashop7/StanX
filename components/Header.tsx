@@ -46,7 +46,7 @@ export const Header = () => {
 
   return (
     <header className="sticky top-0 z-50 w-full navbar-blur border-b border-border">
-      <div className="max-w-[1400px] mx-auto flex h-[52px] items-center justify-between px-4 lg:px-6">
+      <div className="max-w-350 mx-auto flex h-[52px] items-center justify-between px-4 lg:px-6">
         
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2 group shrink-0">

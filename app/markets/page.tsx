@@ -71,7 +71,7 @@ const Markets = () => {
       <Header />
 
       <PageTransition>
-        <main className="flex-1 container mx-auto px-4 py-8 pt-12">
+        <main className="flex-1 max-w-350 mx-auto w-full px-4 lg:px-6 py-8 pt-12">
           {/* Page Header */}
           <div className="mb-8 flex items-end justify-between">
             <div>
