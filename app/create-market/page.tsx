@@ -25,42 +25,18 @@ import {
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useWalletSession } from '@solana/react-hooks';
+import { useWalletSession, useSendTransaction } from '@solana/react-hooks';
 import { createWalletTransactionSigner } from '@solana/client';
-import {
-  appendTransactionMessageInstruction,
-  createTransactionMessage,
-  getSignatureFromTransaction,
-  getBase64EncodedWireTransaction,
-  pipe as solanaPipe,
-  setTransactionMessageFeePayerSigner,
-  setTransactionMessageLifetimeUsingBlockhash,
-  signTransactionMessageWithSigners,
-  address,
-} from '@solana/kit';
+import { address } from '@solana/kit';
 import { USDC_MINT, SOLANA_NETWORK } from '@/lib/constants';
 import { getInitializeMarketInstructionAsync } from '@/generated/instructions/initializeMarket';
 import { fetchIndexerHealth } from '@/lib/api/backend';
 import { getAllMarkets } from '@/lib/blockchain/market';
-import { rpc } from '@/lib/blockchain/client';
-import { pollForConfirmation, isUserRejection } from '@/lib/blockchain/verify-tx';
+import { isUserRejection } from '@/lib/blockchain/verify-tx';
 import type { VideoPreview } from '@/lib/api/backend';
 import { uploadMetadataAction, previewVideoAction, checkVideoMarketExistsAction } from './actions';
 import type { ExistingVideoMarket } from './actions';
 import { buildVideoMarketMetadata, formatNumber, METRIC_LABELS, type VideoMetric } from './metadata';
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-async function pollForMarket(marketId: number): Promise<boolean> {
-  for (let i = 0; i < 8; i++) {
-    await new Promise(r => setTimeout(r, 2_000));
-    try {
-      const res = await fetch(`/api/markets/${marketId}`);
-      if (res.ok) return true;
-    } catch { /* ignore, retry */ }
-  }
-  return false;
-}
 
 // ── YouTube URL detection────────
 
@@ -139,6 +115,7 @@ function stepLabel(step: PipeStep, marketId: number | null, sig: string | null):
 export default function CreateMarket() {
   const router = useRouter();
   const wallet = useWalletSession();
+  const { send } = useSendTransaction();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const urlInputRef = useRef<HTMLInputElement>(null);
@@ -162,9 +139,6 @@ export default function CreateMarket() {
   const [pipe, setPipe] = useState<Pipeline>({
     step: 'idle', metadataUrl: null, marketId: null, txSignature: null, error: null,
   });
-
-  // inFlightSig: captured BEFORE sending — lets us verify even if send() throws
-  const inFlightSig = useRef<string | null>(null);
 
   const busy = pipe.step !== 'idle' && pipe.step !== 'done' && pipe.step !== 'error';
   const inFlight = pipe.step !== 'idle';
@@ -217,17 +191,16 @@ export default function CreateMarket() {
     setMetric('views');
     setDuplicateMarket(null);
     setDuplicateDismissed(false);
-    inFlightSig.current = null;
     setPipe({ step: 'idle', metadataUrl: null, marketId: null, txSignature: null, error: null });
   };
 
-  // ── Target parsing 
+  // ── Target parsing
 
   const parsedTarget = parseTarget(targetInput);
   const currentValue = video ? getCurrentValue(video, metric) : 0;
   const targetValid = parsedTarget !== null && parsedTarget > currentValue;
 
-  // ── Submit handler 
+  // ── Submit handler
 
   const handleSubmit = async () => {
     if (!wallet) { toast.error('Connect your wallet first'); return; }
@@ -235,8 +208,6 @@ export default function CreateMarket() {
     if (!targetValid) { toast.error('Set a target higher than the current count'); return; }
     if (!endDate) { toast.error('Pick a settlement deadline'); return; }
     if (endDate <= new Date()) { toast.error('Deadline must be in the future'); return; }
-
-    inFlightSig.current = null;
 
     // Check indexer
     setPipe({ step: 'checking-indexer', metadataUrl: null, marketId: null, txSignature: null, error: null });
@@ -284,76 +255,13 @@ export default function CreateMarket() {
         metaDataUrl: metadataUrl,
       });
 
-      // Fetch a fresh blockhash for the transaction lifetime
-      const { value: latestBlockhash } = await rpc
-        .getLatestBlockhash({ commitment: 'confirmed' })
-        .send();
+      // send() handles blockhash, signing (wallet popup), sending, and confirmation.
+      // Same pattern as TradingPanelNew — avoids the @solana/kit version split that
+      // caused the "alphabet4 is not defined" crash.
+      const sig = await send({ instructions: [ix], authority });
 
-      // Build + sign the transaction message
-      // signTransactionMessageWithSigners triggers the wallet popup here
-      const txMessage = solanaPipe(
-        createTransactionMessage({ version: 0 }),
-        (tx) => setTransactionMessageFeePayerSigner(authority, tx),
-        (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-        (tx) => appendTransactionMessageInstruction(ix, tx),
-      );
-      const signedTx = await signTransactionMessageWithSigners(txMessage);
-
-      // Capture the signature IMMEDIATELY — before sending
-      // This is the key: even if send fails / times out, we have the sig to verify
-      const sig = getSignatureFromTransaction(signedTx);
-      inFlightSig.current = sig;
-      setPipe(p => ({ ...p, step: 'confirming-tx', txSignature: sig }));
-
-      // Send (fire-and-forget — we poll for confirmation ourselves)
-      try {
-        const wireTransaction = getBase64EncodedWireTransaction(signedTx);
-        await rpc.sendTransaction(wireTransaction, {
-          encoding: 'base64',
-          preflightCommitment: 'confirmed',
-          skipPreflight: false,
-        }).send();
-      } catch (sendErr) {
-        // Only bail out immediately if the user rejected or simulation failed
-        if (isUserRejection(sendErr)) {
-          setPipe(p => ({ ...p, step: 'idle' }));
-          toast.info('Transaction cancelled');
-          return;
-        }
-        // Otherwise: tx may still be sent — fall through to polling
-        console.warn('[create-market] sendTransaction threw (may still land):', sendErr);
-      }
-
-      // Poll for confirmation
-      const confirmation = await pollForConfirmation(sig, 75_000);
-
-      if (confirmation.result === 'confirmed') {
-        setPipe(p => ({ ...p, step: 'done', txSignature: sig }));
-        toast.success(`Market #${marketId} is live!`);
-        return;
-      }
-
-      if (confirmation.result === 'failed') {
-        const errMsg = typeof confirmation.err === 'object' && confirmation.err !== null
-          ? JSON.stringify(confirmation.err)
-          : 'Transaction reverted on-chain';
-        setPipe(p => ({ ...p, step: 'error', error: errMsg }));
-        toast.error('Transaction failed on-chain', { description: errMsg });
-        return;
-      }
-
-      // Timeout — tx may have landed but RPC hasn't confirmed yet
-      if (confirmation.result === 'timeout') {
-        setPipe(p => ({
-          ...p,
-          step: 'error',
-          error: 'Confirmation timed out. Check Solana Explorer with the tx signature above — if it shows confirmed, your market was created.',
-        }));
-        toast.warning('Confirmation timed out', {
-          description: `Check Explorer for sig: ${sig.slice(0, 16)}…`,
-          duration: 10_000,
-        });
-      }
+      setPipe(p => ({ ...p, step: 'done', txSignature: sig ?? null }));
+      toast.success(`Market #${marketId} is live!`);
     } catch (err: unknown) {
       console.error('[create-market] error:', err);
 
@@ -363,18 +271,6 @@ export default function CreateMarket() {
         return;
       }
 
-      // If we already captured a signature, try confirming it even on error
-      const capturedSig = inFlightSig.current;
-      if (capturedSig) {
-        setPipe(p => ({ ...p, step: 'confirming-tx', txSignature: capturedSig }));
-        const confirmation = await pollForConfirmation(capturedSig, 60_000);
-        if (confirmation.result === 'confirmed') {
-          setPipe(p => ({ ...p, step: 'done', txSignature: capturedSig }));
-          toast.success(`Market #${marketId ?? '?'} is live!`);
-          return;
-        }
-      }
-
       const msg = err instanceof Error ? err.message : 'Unknown error';
       setPipe(p => ({ ...p, step: 'error', error: msg }));
       toast.error('Failed to create market', { description: msg });
@@ -382,7 +278,7 @@ export default function CreateMarket() {
   };
 
   const pct = progressPct(pipe.step);
-  const currentSig = pipe.txSignature ?? inFlightSig.current;
+  const currentSig = pipe.txSignature;
 
   // ── Generated market question preview 
 
