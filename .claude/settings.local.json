@@ -40,7 +40,8 @@
       "Bash(xargs kill *)",
       "Bash(gh api *)",
       "Bash(node -e \"console.log\\(require.resolve\\('@solana/kit', { paths: ['/Users/yash/Documents/CODING/Documents/Web3/prediction-market'] }\\)\\)\")",
-      "Bash(bun install *)"
+      "Bash(bun install *)",
+      "Read(//Users/yash/**)"
     ],
     "additionalDirectories": [
       "/Users/yash/Documents/CODING/Documents-Web3/prediction-market/app"

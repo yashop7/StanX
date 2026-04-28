@@ -41,8 +41,8 @@ export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint, isSettl
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const { stats, isLoading } = useUserStats(marketId, refreshTrigger);
-  const { usdcBalance: yesWallet } = useTokenBalance(outcomeYesMint);
-  const { usdcBalance: noWallet } = useTokenBalance(outcomeNoMint);
+  const { usdcBalance: yesWallet, refresh: refreshYes } = useTokenBalance(outcomeYesMint);
+  const { usdcBalance: noWallet, refresh: refreshNo } = useTokenBalance(outcomeNoMint);
 
   const yesHeld = yesWallet ?? 0;
   const noHeld  = noWallet  ?? 0;
@@ -54,7 +54,9 @@ export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint, isSettl
   const handleRefresh = () => {
     setIsRefreshing(true);
     setRefreshTrigger(p => p + 1);
-    setTimeout(() => setIsRefreshing(false), 600);
+    void refreshYes();
+    void refreshNo();
+    setTimeout(() => setIsRefreshing(false), 1000);
   };
 
   const explorerUrl = (sig: string) =>
@@ -83,6 +85,8 @@ export function UserStatsCard({ marketId, outcomeYesMint, outcomeNoMint, isSettl
         action: explorerAction(sigStr),
       });
       setRefreshTrigger(p => p + 1);
+      void refreshYes();
+      void refreshNo();
     } catch (err) {
       if (isUserRejection(err)) {
         toast.info('Transaction cancelled', { description: 'You rejected the transaction in your wallet.' });

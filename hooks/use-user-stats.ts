@@ -82,7 +82,11 @@ export function useUserStats(marketId: number, refreshTrigger?: number) {
     };
 
     fetchStats();
-    return () => { cancelled = true; };
+    const interval = setInterval(fetchStats, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [session, marketId, refreshTrigger]);
 
   return { stats, isLoading };

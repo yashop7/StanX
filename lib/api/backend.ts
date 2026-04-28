@@ -99,8 +99,8 @@ export function toDisplayQty(baseUnits: number): number {
 }
 
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, { cache: 'no-store' });
+async function get<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, { cache: 'no-store', ...init });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`Backend ${path} → ${res.status}: ${text}`);
@@ -138,7 +138,7 @@ export async function signin(username: string, password: string): Promise<{ toke
 
 /** GET /markets — list all active markets */
 export async function fetchBackendMarkets(): Promise<BackendMarket[]> {
-  return get<BackendMarket[]>('/markets');
+  return get<BackendMarket[]>('/markets', { next: { revalidate: 30 } });
 }
 
 /** GET /markets/:id — single market */

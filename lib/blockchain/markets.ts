@@ -312,76 +312,63 @@ export async function fetchAllDisplayMarketsFromBackend(): Promise<DisplayMarket
   const backendMarkets = await fetchBackendMarkets();
   if (backendMarkets.length === 0) return [];
 
-  const BATCH_SIZE = 5;
-  const BATCH_DELAY_MS = 100;
+  // Fetch all PDAs + metadata in parallel — no orderbook calls on the list path.
+  // Orderbook prices are only needed on individual market pages, not the list.
+  const results = await Promise.all(
+    backendMarkets.map(async (bm): Promise<DisplayMarket | null> => {
+      const [pdaAddress, meta] = await Promise.all([
+        deriveMarketPDA(bm.market_id),
+        tryFetchMetadata(bm.meta_data_url),
+      ]);
 
-  const tasks = backendMarkets.map((bm) => async (): Promise<DisplayMarket | null> => {
-    const [pdaAddress, orderbookResult, meta] = await Promise.all([
-      deriveMarketPDA(bm.market_id),
-      fetchBackendOrderbook(bm.market_id).catch(() => null),
-      tryFetchMetadata(bm.meta_data_url),
-    ]);
+      const isSettled = bm.status === "Settled" || bm.status === "Closed";
+      const winningOutcome: DisplayMarket["winningOutcome"] =
+        bm.winning_outcome === "OutcomeA" ? "YES"
+        : bm.winning_outcome === "OutcomeB" ? "NO"
+        : bm.winning_outcome === "Neither" ? "NEITHER"
+        : null;
 
-    const { yesPrice, noPrice } = orderbookResult
-      ? derivePriceFromBackendBook(orderbookResult)
-      : { yesPrice: 0.5, noPrice: 0.5 };
+      const endDate = new Date(bm.settlement_deadline * 1000);
+      const msLeft = endDate.getTime() - Date.now();
+      const status: DisplayMarket["status"] = isSettled
+        ? "resolved"
+        : msLeft <= 3 * 24 * 60 * 60 * 1000
+        ? "ending-soon"
+        : "active";
 
-    const isSettled = bm.status === "Settled" || bm.status === "Closed";
-    const winningOutcome: DisplayMarket["winningOutcome"] =
-      bm.winning_outcome === "OutcomeA" ? "YES"
-      : bm.winning_outcome === "OutcomeB" ? "NO"
-      : bm.winning_outcome === "Neither" ? "NEITHER"
-      : null;
+      return {
+        address: pdaAddress as string,
+        marketId: bm.market_id,
+        authority: bm.authority,
+        collateralMint: bm.collateral_mint,
+        outcomeYesMint: bm.outcome_yes_mint,
+        outcomeNoMint: bm.outcome_no_mint,
+        question: meta.question ?? `Market #${bm.market_id}`,
+        yesPrice: 0.5,
+        noPrice: 0.5,
+        volume: 0,
+        endDate,
+        isSettled,
+        winningOutcome,
+        status,
+        metaDataUrl: bm.meta_data_url,
+        image: meta.image ?? `https://picsum.photos/seed/${bm.market_id}/800/600`,
+        category: meta.category ?? "General",
+        description: meta.description ?? `On-chain prediction market #${bm.market_id}.`,
+        resolutionCriteria: meta.resolutionCriteria ?? "Resolves based on on-chain settlement.",
+        resolutionSource: meta.resolutionSource,
+        participants: 0,
+        videoId: meta.videoId,
+        videoUrl: meta.videoUrl,
+        channelName: meta.channelName,
+        metric: meta.metric,
+        target: meta.target,
+        baselineValue: meta.baselineValue,
+      };
+    }),
+  );
 
-    const endDate = new Date(bm.settlement_deadline * 1000);
-    const msLeft = endDate.getTime() - Date.now();
-    const status: DisplayMarket["status"] = isSettled
-      ? "resolved"
-      : msLeft <= 3 * 24 * 60 * 60 * 1000
-      ? "ending-soon"
-      : "active";
-
-    return {
-      address: pdaAddress as string,
-      marketId: bm.market_id,
-      authority: bm.authority,
-      collateralMint: bm.collateral_mint,
-      outcomeYesMint: bm.outcome_yes_mint,
-      outcomeNoMint: bm.outcome_no_mint,
-      question: meta.question ?? `Market #${bm.market_id}`,
-      yesPrice,
-      noPrice,
-      volume: 0, // not tracked in backend — would need on-chain for this
-      endDate,
-      isSettled,
-      winningOutcome,
-      status,
-      metaDataUrl: bm.meta_data_url,
-      image: meta.image ?? `https://picsum.photos/seed/${bm.market_id}/800/600`,
-      category: meta.category ?? "General",
-      description: meta.description ?? `On-chain prediction market #${bm.market_id}.`,
-      resolutionCriteria: meta.resolutionCriteria ?? "Resolves based on on-chain settlement.",
-      resolutionSource: meta.resolutionSource,
-      participants: 0,
-      videoId: meta.videoId,
-      videoUrl: meta.videoUrl,
-      channelName: meta.channelName,
-      metric: meta.metric,
-      target: meta.target,
-      baselineValue: meta.baselineValue,
-    };
-  });
-
-  const enriched: (DisplayMarket | null)[] = [];
-  for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
-    const batch = await Promise.all(tasks.slice(i, i + BATCH_SIZE).map(fn => fn()));
-    enriched.push(...batch);
-    if (i + BATCH_SIZE < tasks.length) {
-      await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
-    }
-  }
-
-  return (enriched.filter(Boolean) as DisplayMarket[]).sort((a, b) => a.marketId - b.marketId);
+  return (results.filter(Boolean) as DisplayMarket[]).sort((a, b) => a.marketId - b.marketId);
 }
 
 /**
