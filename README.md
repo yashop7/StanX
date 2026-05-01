@@ -8,7 +8,7 @@ The entire system - from the Solana smart contract to the live orderbook streami
 
 ---
 
-## Demo
+## Demo Video on YT
 
 [![StanX Demo](https://img.youtube.com/vi/aVkiBU9s3SM/maxresdefault.jpg)](https://www.youtube.com/watch?v=aVkiBU9s3SM)
 
